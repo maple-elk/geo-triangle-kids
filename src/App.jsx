@@ -5,11 +5,14 @@ import AngleStatsPanel from './components/AngleStatsPanel';
 import AngleProofWidget from './components/AngleProofWidget';
 import PresetToolbar from './components/PresetToolbar';
 import ChallengeMode from './components/ChallengeMode';
+import SpaceGravityGame from './components/SpaceGravityGame';
 import KidsGuideModal from './components/KidsGuideModal';
 import { getTriangleAngles, getSideLengths, getPresets } from './utils/geometry';
 import { playPopSound, playSnapSound } from './utils/audio';
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState('triangle'); // 'triangle' | 'gravity'
+
   const initialPresets = useMemo(() => getPresets(), []);
   const [points, setPoints] = useState(initialPresets[0].points); // Default to Equilateral
   const [activePreset, setActivePreset] = useState('equilateral');
@@ -33,7 +36,7 @@ export default function App() {
       ...prev,
       [handleKey]: newPos,
     }));
-    setActivePreset(null); // Custom positioning
+    setActivePreset(null);
     playPopSound(soundEnabled);
   };
 
@@ -45,8 +48,13 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* Header Bar */}
+      {/* Header Bar with Module Tabs */}
       <Navbar
+        activeTab={activeTab}
+        onChangeTab={(tab) => {
+          setActiveTab(tab);
+          playSnapSound(soundEnabled);
+        }}
         soundEnabled={soundEnabled}
         onToggleSound={() => setSoundEnabled((v) => !v)}
         snapGrid={snapGrid}
@@ -59,35 +67,41 @@ export default function App() {
         onOpenHelp={() => setShowHelpModal(true)}
       />
 
-      {/* Main Grid Workspace */}
-      <main className="main-layout">
-        {/* Left Column: Interactive Canvas & Challenges */}
-        <div className="workspace-column">
-          <TriangleCanvas
-            points={points}
-            angles={angles}
-            sides={sides}
-            onPointChange={handlePointChange}
-            showGrid={true}
-            showSideLengths={showSideLengths}
-            showAngleArcs={true}
-            snapGrid={snapGrid}
-            soundEnabled={soundEnabled}
-          />
+      {/* Module 1: Triangle Geometry Explorer */}
+      {activeTab === 'triangle' && (
+        <main className="main-layout">
+          <div className="workspace-column">
+            <TriangleCanvas
+              points={points}
+              angles={angles}
+              sides={sides}
+              onPointChange={handlePointChange}
+              showGrid={true}
+              showSideLengths={showSideLengths}
+              showAngleArcs={true}
+              snapGrid={snapGrid}
+              soundEnabled={soundEnabled}
+            />
+            <ChallengeMode angles={angles} soundEnabled={soundEnabled} />
+          </div>
 
-          <ChallengeMode angles={angles} soundEnabled={soundEnabled} />
-        </div>
+          <div className="sidebar-column">
+            <AngleStatsPanel angles={angles} sides={sides} />
+            <AngleProofWidget angles={angles} />
+            <PresetToolbar
+              activePreset={activePreset}
+              onSelectPreset={handleSelectPreset}
+            />
+          </div>
+        </main>
+      )}
 
-        {/* Right Column: Angle HUD, 180° Proof, Presets */}
-        <div className="sidebar-column">
-          <AngleStatsPanel angles={angles} sides={sides} />
-          <AngleProofWidget angles={angles} />
-          <PresetToolbar
-            activePreset={activePreset}
-            onSelectPreset={handleSelectPreset}
-          />
-        </div>
-      </main>
+      {/* Module 2: Space Gravity Slingshot */}
+      {activeTab === 'gravity' && (
+        <main>
+          <SpaceGravityGame soundEnabled={soundEnabled} />
+        </main>
+      )}
 
       {/* Help Modal */}
       <KidsGuideModal

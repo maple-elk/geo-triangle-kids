@@ -2,6 +2,8 @@ import React from 'react';
 import { Volume2, VolumeX, Grid, Ruler, HelpCircle } from 'lucide-react';
 
 export default function Navbar({
+  activeTab,
+  onChangeTab,
   soundEnabled,
   onToggleSound,
   snapGrid,
@@ -13,31 +15,51 @@ export default function Navbar({
   return (
     <header className="navbar">
       <div className="brand">
-        <div className="brand-logo">🔺</div>
+        <div className="brand-logo">Math</div>
         <div>
-          <div className="brand-title">GeoTriangle Kids</div>
-          <div className="brand-subtitle">Interactive Geometry & Angle Explorer</div>
+          <div className="brand-title">GeoMath Explorer</div>
+          <div className="brand-subtitle">Interactive Geometry & Physics Playground</div>
         </div>
       </div>
 
-      <div className="nav-controls">
+      {/* Module Tabs */}
+      <div style={{ display: 'flex', gap: '8px', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.1)' }}>
         <button
-          className={`btn-icon ${snapGrid ? 'active' : ''}`}
-          onClick={onToggleSnapGrid}
-          title="Toggle Grid Snapping"
+          className={`btn-icon ${activeTab === 'triangle' ? 'active' : ''}`}
+          onClick={() => onChangeTab('triangle')}
         >
-          <Grid size={18} />
-          <span>{snapGrid ? 'Grid Snap: ON' : 'Grid Snap'}</span>
+          <span>🔺 Triangle Geometry</span>
         </button>
+        <button
+          className={`btn-icon ${activeTab === 'gravity' ? 'active' : ''}`}
+          onClick={() => onChangeTab('gravity')}
+        >
+          <span>🚀 Gravity Slingshot</span>
+        </button>
+      </div>
 
-        <button
-          className={`btn-icon ${showSideLengths ? 'active' : ''}`}
-          onClick={onToggleSideLengths}
-          title="Toggle Side Length Display"
-        >
-          <Ruler size={18} />
-          <span>{showSideLengths ? 'Lengths: ON' : 'Lengths'}</span>
-        </button>
+      <div className="nav-controls">
+        {activeTab === 'triangle' && (
+          <>
+            <button
+              className={`btn-icon ${snapGrid ? 'active' : ''}`}
+              onClick={onToggleSnapGrid}
+              title="Toggle Grid Snapping"
+            >
+              <Grid size={18} />
+              <span>{snapGrid ? 'Grid Snap: ON' : 'Grid Snap'}</span>
+            </button>
+
+            <button
+              className={`btn-icon ${showSideLengths ? 'active' : ''}`}
+              onClick={onToggleSideLengths}
+              title="Toggle Side Length Display"
+            >
+              <Ruler size={18} />
+              <span>{showSideLengths ? 'Lengths: ON' : 'Lengths'}</span>
+            </button>
+          </>
+        )}
 
         <button
           className={`btn-icon ${soundEnabled ? 'active' : ''}`}
