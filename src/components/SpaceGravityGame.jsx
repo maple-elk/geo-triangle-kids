@@ -72,22 +72,28 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   const [turnOwner, setTurnOwner] = useState('player'); // 'player' | 'enemy'
   const [score, setScore] = useState(0);
 
+  // Solar System Board Size / Scale (0.6x to 1.8x)
+  const [boardScale, setBoardScale] = useState(1.0);
+
   // Dynamic Deep Space Camera Zoom State [minX, minY, width, height]
-  const DEFAULT_VIEWBOX = [-100, -60, 1160, 725];
-  const [viewBox, setViewBox] = useState(DEFAULT_VIEWBOX);
-  const currentViewBoxRef = useRef(DEFAULT_VIEWBOX);
-  const targetViewBoxRef = useRef(DEFAULT_VIEWBOX);
+  const getDefaultViewBox = useCallback((scale = boardScale) => {
+    return [-100 * scale, -60 * scale, 1160 * scale, 725 * scale];
+  }, [boardScale]);
+
+  const [viewBox, setViewBox] = useState([-100, -60, 1160, 725]);
+  const currentViewBoxRef = useRef([-100, -60, 1160, 725]);
+  const targetViewBoxRef = useRef([-100, -60, 1160, 725]);
 
   // Set target viewBox bounds to enclose board and active projectile (clamped to max space arena)
   const updateCameraTarget = useCallback((activePos) => {
     if (!activePos) {
-      targetViewBoxRef.current = DEFAULT_VIEWBOX;
+      targetViewBoxRef.current = getDefaultViewBox(boardScale);
     } else {
-      const margin = 180;
-      let minX = Math.min(-100, activePos.x - margin);
-      let maxX = Math.max(1060, activePos.x + margin);
-      let minY = Math.min(-60, activePos.y - margin);
-      let maxY = Math.max(660, activePos.y + margin);
+      const margin = 180 * boardScale;
+      let minX = Math.min(-100 * boardScale, activePos.x - margin);
+      let maxX = Math.max(1060 * boardScale, activePos.x + margin);
+      let minY = Math.min(-60 * boardScale, activePos.y - margin);
+      let maxY = Math.max(660 * boardScale, activePos.y + margin);
 
       let w = maxX - minX;
       let h = maxY - minY;
@@ -119,7 +125,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
 
       targetViewBoxRef.current = [minX, minY, w, h];
     }
-  }, []);
+  }, [boardScale, getDefaultViewBox]);
 
   // Dedicated Continuous Camera LERP Engine (Runs independently of physics state)
   useEffect(() => {
@@ -187,9 +193,11 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   // Generate new level with current customization settings
   const handleNewLevel = useCallback(
     (customConfig) => {
+      const bScale = customConfig?.boardScale !== undefined ? customConfig.boardScale : boardScale;
       const cfg = customConfig || {
         planetCount,
         massMult,
+        boardScale: bScale,
         enableBlackHoles,
         enableAsteroids,
         enableWormholes,
@@ -214,12 +222,15 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       setTurnOwner('player');
       setRoundCompleted(false);
       setShowEndSummary(false);
-      targetViewBoxRef.current = DEFAULT_VIEWBOX;
-      currentViewBoxRef.current = DEFAULT_VIEWBOX;
-      setViewBox(DEFAULT_VIEWBOX);
+
+      const defVB = getDefaultViewBox(bScale);
+      targetViewBoxRef.current = defVB;
+      currentViewBoxRef.current = defVB;
+      setViewBox(defVB);
       playSnapSound(soundEnabled);
     },
     [
+      boardScale,
       planetCount,
       massMult,
       enableBlackHoles,
@@ -230,6 +241,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       enableShields,
       enableEnemyShip,
       soundEnabled,
+      getDefaultViewBox,
     ]
   );
 
@@ -1328,6 +1340,29 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                     <input type="range" min="0.2" max="2.0" step="0.1" value={simSpeedScale} onChange={(e) => setSimSpeedScale(Number(e.target.value))} style={{ width: '100%', accentColor: '#4ade80' }} />
                   </div>
 
+                  {/* Board Size / Populated Area Scale */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '4px' }}>
+                      <span>Solar System Board Size</span>
+                      <span style={{ color: '#38bdf8', fontWeight: '700' }}>
+                        {boardScale.toFixed(1)}x {boardScale < 0.9 ? '(Compact)' : boardScale > 1.2 ? '(Expansive)' : '(Standard)'}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.6"
+                      max="1.8"
+                      step="0.1"
+                      value={boardScale}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setBoardScale(val);
+                        handleNewLevel({ ...level, boardScale: val });
+                      }}
+                      style={{ width: '100%', accentColor: '#38bdf8' }}
+                    />
+                  </div>
+
                   {/* 7 Space Objects */}
                   <div style={{ background: 'rgba(255,255,255,0.04)', padding: '8px', borderRadius: '8px' }}>
                     <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#f1f5f9', marginBottom: '6px' }}>🌌 Optional Space Objects</div>
@@ -1624,6 +1659,36 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                   value={simSpeedScale}
                   onChange={(e) => setSimSpeedScale(Number(e.target.value))}
                   style={{ width: '100%', accentColor: '#4ade80' }}
+                />
+              </div>
+
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginBottom: '4px',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                  }}
+                >
+                  <span>Solar System Board Size</span>
+                  <span style={{ color: '#38bdf8' }}>
+                    {boardScale.toFixed(1)}x {boardScale < 0.9 ? '(Compact)' : boardScale > 1.2 ? '(Expansive)' : '(Standard)'}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.6"
+                  max="1.8"
+                  step="0.1"
+                  value={boardScale}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setBoardScale(val);
+                    handleNewLevel({ ...level, boardScale: val });
+                  }}
+                  style={{ width: '100%', accentColor: '#38bdf8' }}
                 />
               </div>
 

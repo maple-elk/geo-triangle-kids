@@ -6,9 +6,13 @@ export const DEFAULT_G = 400; // Default Gravitational Constant
 
 // Generate random level layout with planets, target, spaceship, enemy ship, and optional space phenomena
 export function generateRandomLevel(width = 960, height = 600, config = {}) {
+  const boardScale = config.boardScale ? Number(config.boardScale) : 1.0;
+  const sW = width * boardScale;
+  const sH = height * boardScale;
+
   const target = {
-    x: width - 110,
-    y: Math.floor(100 + Math.random() * 260),
+    x: Math.round(sW - 110 * boardScale),
+    y: Math.round(100 * boardScale + Math.random() * 260 * boardScale),
     radius: 24,
   };
 
@@ -39,7 +43,7 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
 
   const occupiedList = [];
 
-  const isPositionOccupied = (x, y, minClearance = 80) => {
+  const isPositionOccupied = (x, y, minClearance = 80 * Math.sqrt(boardScale)) => {
     if (Math.hypot(x - target.x, y - target.y) < minClearance) return true;
     for (const item of occupiedList) {
       if (Math.hypot(x - item.x, y - item.y) < minClearance + item.radius) return true;
@@ -53,12 +57,12 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let attempts = 0;
 
     do {
-      px = 250 + Math.random() * (width - 460);
-      py = 90 + Math.random() * 260;
+      px = (250 + Math.random() * (width - 460)) * boardScale;
+      py = (90 + Math.random() * 260) * boardScale;
       radius = 28 + Math.floor(Math.random() * 34);
       mass = Math.round(radius * (1.2 + Math.random() * 1.5) * massMult);
       attempts++;
-    } while (isPositionOccupied(px, py, radius + 40) && attempts < 120);
+    } while (isPositionOccupied(px, py, radius + 40 * Math.sqrt(boardScale)) && attempts < 120);
 
     const theme = planetColors[i % planetColors.length];
     const planetObj = {
@@ -81,10 +85,10 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let bx, by;
     let attempts = 0;
     do {
-      bx = 280 + Math.random() * (width - 500);
-      by = 100 + Math.random() * 240;
+      bx = (280 + Math.random() * (width - 500)) * boardScale;
+      by = (100 + Math.random() * 240) * boardScale;
       attempts++;
-    } while (isPositionOccupied(bx, by, 110) && attempts < 120);
+    } while (isPositionOccupied(bx, by, 110 * Math.sqrt(boardScale)) && attempts < 120);
 
     const bh = {
       id: 'bh_1',
@@ -103,10 +107,10 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let ax, ay;
     let attempts = 0;
     do {
-      ax = 250 + Math.random() * (width - 450);
-      ay = 90 + Math.random() * 260;
+      ax = (250 + Math.random() * (width - 450)) * boardScale;
+      ay = (90 + Math.random() * 260) * boardScale;
       attempts++;
-    } while (isPositionOccupied(ax, ay, 90) && attempts < 120);
+    } while (isPositionOccupied(ax, ay, 90 * Math.sqrt(boardScale)) && attempts < 120);
 
     const ast = {
       id: 'ast_1',
@@ -124,13 +128,13 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let w1x, w1y, w2x, w2y;
     let attempts = 0;
     do {
-      w1x = 220 + Math.random() * 200;
-      w1y = 90 + Math.random() * 260;
-      w2x = width - 360 + Math.random() * 200;
-      w2y = 90 + Math.random() * 260;
+      w1x = (220 + Math.random() * 200) * boardScale;
+      w1y = (90 + Math.random() * 260) * boardScale;
+      w2x = (width - 360 + Math.random() * 200) * boardScale;
+      w2y = (90 + Math.random() * 260) * boardScale;
       attempts++;
     } while (
-      (isPositionOccupied(w1x, w1y, 70) || isPositionOccupied(w2x, w2y, 70)) &&
+      (isPositionOccupied(w1x, w1y, 70 * Math.sqrt(boardScale)) || isPositionOccupied(w2x, w2y, 70 * Math.sqrt(boardScale))) &&
       attempts < 150
     );
 
@@ -146,10 +150,10 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let rx, ry;
     let attempts = 0;
     do {
-      rx = 260 + Math.random() * (width - 480);
-      ry = 90 + Math.random() * 260;
+      rx = (260 + Math.random() * (width - 480)) * boardScale;
+      ry = (90 + Math.random() * 260) * boardScale;
       attempts++;
-    } while (isPositionOccupied(rx, ry, 95) && attempts < 120);
+    } while (isPositionOccupied(rx, ry, 95 * Math.sqrt(boardScale)) && attempts < 120);
 
     const pulsar = {
       id: 'pul_1',
@@ -168,10 +172,10 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let gx, gy;
     let attempts = 0;
     do {
-      gx = 240 + Math.random() * (width - 450);
-      gy = 90 + Math.random() * 260;
+      gx = (240 + Math.random() * (width - 450)) * boardScale;
+      gy = (90 + Math.random() * 260) * boardScale;
       attempts++;
-    } while (isPositionOccupied(gx, gy, 80) && attempts < 120);
+    } while (isPositionOccupied(gx, gy, 80 * Math.sqrt(boardScale)) && attempts < 120);
 
     const booster = {
       id: 'boost_1',
@@ -189,10 +193,10 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let mx, my;
     let attempts = 0;
     do {
-      mx = 260 + Math.random() * (width - 460);
-      my = 90 + Math.random() * 260;
+      mx = (260 + Math.random() * (width - 460)) * boardScale;
+      my = (90 + Math.random() * 260) * boardScale;
       attempts++;
-    } while (isPositionOccupied(mx, my, 85) && attempts < 120);
+    } while (isPositionOccupied(mx, my, 85 * Math.sqrt(boardScale)) && attempts < 120);
 
     const shieldObj = {
       id: 'shield_1',
@@ -212,10 +216,10 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let ex, ey;
     let attempts = 0;
     do {
-      ex = width - 260 + Math.random() * 140;
-      ey = 90 + Math.random() * 260;
+      ex = (width - 260 + Math.random() * 140) * boardScale;
+      ey = (90 + Math.random() * 260) * boardScale;
       attempts++;
-    } while (isPositionOccupied(ex, ey, 90) && attempts < 120);
+    } while (isPositionOccupied(ex, ey, 90 * Math.sqrt(boardScale)) && attempts < 120);
 
     enemyShip = {
       id: 'enemy_1',
@@ -233,10 +237,10 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
   let shipAttempts = 0;
   do {
     shipOverlap = false;
-    sx = 140 + Math.random() * 120;
-    sy = 100 + Math.random() * 250;
+    sx = (140 + Math.random() * 120) * boardScale;
+    sy = (100 + Math.random() * 250) * boardScale;
 
-    if (isPositionOccupied(sx, sy, 80)) shipOverlap = true;
+    if (isPositionOccupied(sx, sy, 80 * Math.sqrt(boardScale))) shipOverlap = true;
     shipAttempts++;
   } while (shipOverlap && shipAttempts < 150);
 
