@@ -114,11 +114,18 @@ export function calculateGravitationalAccel(x, y, planets, gravityG = DEFAULT_G)
   return { ax, ay };
 }
 
-// Step physics forward by dt seconds (tuned for cinematic, readable speed)
-export function updateProjectilePhysics(pos, vel, planets, dt = 0.016, gravityG = DEFAULT_G) {
+// Step physics forward by dt seconds with configurable simulation speed scale
+export function updateProjectilePhysics(
+  pos,
+  vel,
+  planets,
+  dt = 0.016,
+  gravityG = DEFAULT_G,
+  simSpeedScale = 1.0
+) {
   const { ax, ay } = calculateGravitationalAccel(pos.x, pos.y, planets, gravityG);
 
-  const SPEED_FACTOR = 0.55;
+  const SPEED_FACTOR = 0.55 * simSpeedScale;
 
   const nVel = {
     x: vel.x + ax * dt * 35 * SPEED_FACTOR,

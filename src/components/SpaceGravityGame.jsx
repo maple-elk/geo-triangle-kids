@@ -8,7 +8,7 @@ import {
   DEFAULT_G,
 } from '../utils/physics';
 import { playPopSound, playSnapSound, playVictorySound } from '../utils/audio';
-import { Play, RotateCcw, Compass, Zap, Eye, EyeOff, Sliders, Activity, Magnet, Target } from 'lucide-react';
+import { Play, RotateCcw, Compass, Zap, Eye, EyeOff, Sliders, Activity } from 'lucide-react';
 
 export default function SpaceGravityGame({ soundEnabled }) {
   const svgRef = useRef(null);
@@ -17,6 +17,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
   const [planetCount, setPlanetCount] = useState('auto'); // 'auto' | 1..5
   const [gravityG, setGravityG] = useState(DEFAULT_G); // 100..1000
   const [massMult, setMassMult] = useState(1.0); // 0.5..2.0
+  const [simSpeedScale, setSimSpeedScale] = useState(1.0); // 0.2..2.0
   const [autoNextOnTarget, setAutoNextOnTarget] = useState(true);
 
   // Visual Overlays
@@ -212,7 +213,8 @@ export default function SpaceGravityGame({ soundEnabled }) {
         velRef.current,
         planets,
         0.016,
-        gravityG
+        gravityG,
+        simSpeedScale
       );
 
       posRef.current = result.pos;
@@ -263,7 +265,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [isSimulating, planets, target, gravityG, finalizeShot, soundEnabled]);
+  }, [isSimulating, planets, target, gravityG, simSpeedScale, finalizeShot, soundEnabled]);
 
   // Aiming vector end point in SVG
   const rad = (angle * Math.PI) / 180;
@@ -296,10 +298,23 @@ export default function SpaceGravityGame({ soundEnabled }) {
 
   const netAccelMag = Math.hypot(netAccel.ax, netAccel.ay);
   const netAccelAngle = Math.atan2(netAccel.ay, netAccel.ax);
-  const gravityVectorLength = Math.min(80, Math.max(16, netAccelMag * 12));
+  const gravityVectorLength = Math.max(30, Math.min(130, netAccelMag * 85));
   const gravityVectorEnd = {
     x: currentPos.x + gravityVectorLength * Math.cos(netAccelAngle),
     y: currentPos.y + gravityVectorLength * Math.sin(netAccelAngle),
+  };
+
+  // Arrowhead coordinates for Gravity Pull Vector
+  const arrowHeadAngle1 = netAccelAngle + Math.PI - 0.4;
+  const arrowHeadAngle2 = netAccelAngle + Math.PI + 0.4;
+  const arrowHeadLen = 10;
+  const p1 = {
+    x: gravityVectorEnd.x + arrowHeadLen * Math.cos(arrowHeadAngle1),
+    y: gravityVectorEnd.y + arrowHeadLen * Math.sin(arrowHeadAngle1),
+  };
+  const p2 = {
+    x: gravityVectorEnd.x + arrowHeadLen * Math.cos(arrowHeadAngle2),
+    y: gravityVectorEnd.y + arrowHeadLen * Math.sin(arrowHeadAngle2),
   };
 
   // Compute trails to display (either all or last 3 with fading opacities)
@@ -523,6 +538,46 @@ export default function SpaceGravityGame({ soundEnabled }) {
             </g>
           )}
 
+          {/* Net Gravity Force Vector Arrow on Projectile (Prominent & Scaled) */}
+          {showGravityVectors && (
+            <g style={{ pointerEvents: 'none' }}>
+              <line
+                x1={currentPos.x}
+                y1={currentPos.y}
+                x2={gravityVectorEnd.x}
+                y2={gravityVectorEnd.y}
+                stroke="#38bdf8"
+                strokeWidth="3"
+                strokeDasharray="5 3"
+              />
+              <polygon
+                points={`${gravityVectorEnd.x},${gravityVectorEnd.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`}
+                fill="#38bdf8"
+              />
+              <rect
+                x={gravityVectorEnd.x + 6}
+                y={gravityVectorEnd.y - 12}
+                width="64"
+                height="20"
+                rx="5"
+                fill="rgba(15, 23, 42, 0.85)"
+                stroke="#38bdf8"
+                strokeWidth="1"
+              />
+              <text
+                x={gravityVectorEnd.x + 38}
+                y={gravityVectorEnd.y + 2}
+                textAnchor="middle"
+                fill="#38bdf8"
+                fontSize="11"
+                fontWeight="700"
+                fontFamily="Outfit"
+              >
+                Fg: {netAccelMag.toFixed(1)}
+              </text>
+            </g>
+          )}
+
           {/* Spaceship Handle */}
           <g
             transform={`translate(${ship.x}, ${ship.y})`}
@@ -548,36 +603,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
             />
           )}
 
-          {/* Net Gravity Force Pull Vector Arrow on Projectile */}
-          {showGravityVectors && (isSimulating || netAccelMag > 0.05) && (
-            <g style={{ pointerEvents: 'none' }}>
-              <line
-                x1={currentPos.x}
-                y1={currentPos.y}
-                x2={gravityVectorEnd.x}
-                y2={gravityVectorEnd.y}
-                stroke="#38bdf8"
-                strokeWidth="2.5"
-                strokeDasharray="3 3"
-              />
-              <circle
-                cx={gravityVectorEnd.x}
-                cy={gravityVectorEnd.y}
-                r="4"
-                fill="#38bdf8"
-              />
-              <text
-                x={gravityVectorEnd.x + 8}
-                y={gravityVectorEnd.y + 4}
-                fill="#38bdf8"
-                fontSize="11"
-                fontWeight="700"
-              >
-                Fg
-              </text>
-            </g>
-          )}
-
           {/* Flying Projectile Orb */}
           {projectilePos && (
             <circle
@@ -591,15 +616,15 @@ export default function SpaceGravityGame({ soundEnabled }) {
             />
           )}
 
-          {/* Top-Right HUD Badge: Distance to Target */}
-          <g transform="translate(730, 20)" style={{ pointerEvents: 'none' }}>
+          {/* Top-Right HUD Badge: Target Distance AND Live Speed */}
+          <g transform="translate(640, 20)" style={{ pointerEvents: 'none' }}>
             <rect
               x="0"
               y="0"
-              width="210"
+              width="300"
               height="36"
               rx="10"
-              fill="rgba(15, 23, 42, 0.85)"
+              fill="rgba(15, 23, 42, 0.88)"
               stroke="rgba(56, 189, 248, 0.4)"
               strokeWidth="1.5"
             />
@@ -611,7 +636,17 @@ export default function SpaceGravityGame({ soundEnabled }) {
               fontWeight="700"
               fontFamily="Outfit"
             >
-              🎯 Target Distance: {targetDist} px
+              🎯 Target: {targetDist} px
+            </text>
+            <text
+              x="160"
+              y="23"
+              fill="#4ade80"
+              fontSize="12"
+              fontWeight="700"
+              fontFamily="Outfit"
+            >
+              ⚡ Speed: {currentSpeed} px/s
             </text>
           </g>
         </svg>
@@ -727,9 +762,9 @@ export default function SpaceGravityGame({ soundEnabled }) {
             </div>
 
             <div className="sum-card" style={{ padding: '12px' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Flight Path Points</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#fbbf24' }}>
-                {trail.length} pts
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Gravity Pull (Fg)</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#38bdf8' }}>
+                {netAccelMag.toFixed(1)}
               </div>
             </div>
 
@@ -746,12 +781,37 @@ export default function SpaceGravityGame({ soundEnabled }) {
         <div className="side-card">
           <div className="card-title">
             <Sliders size={20} color="var(--color-accent-purple)" />
-            <span>Universe & Overlay Toggles</span>
+            <span>Universe & Speed Controls</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* Simulation Speed Slider */}
+            <div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  marginBottom: '4px',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                }}
+              >
+                <span>Simulation Flight Speed</span>
+                <span style={{ color: '#4ade80' }}>{simSpeedScale.toFixed(1)}x</span>
+              </div>
+              <input
+                type="range"
+                min="0.2"
+                max="2.0"
+                step="0.1"
+                value={simSpeedScale}
+                onChange={(e) => setSimSpeedScale(Number(e.target.value))}
+                style={{ width: '100%', accentColor: '#4ade80' }}
+              />
+            </div>
+
             {/* Visual Overlay Toggles */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
               <label
                 style={{
                   display: 'flex',
