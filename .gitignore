@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Sensitive & Environment Files
+.env
+.env.*
+.gemini/
+.agents/
+
