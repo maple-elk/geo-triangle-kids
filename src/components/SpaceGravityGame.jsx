@@ -6,7 +6,7 @@ import {
   checkCollisions,
 } from '../utils/physics';
 import { playPopSound, playSnapSound, playVictorySound } from '../utils/audio';
-import { Play, RotateCcw, Compass, Zap } from 'lucide-react';
+import { Play, RotateCcw, Compass, Zap, Eye, EyeOff } from 'lucide-react';
 
 export default function SpaceGravityGame({ soundEnabled }) {
   const svgRef = useRef(null);
@@ -15,6 +15,10 @@ export default function SpaceGravityGame({ soundEnabled }) {
   const [power, setPower] = useState(55); // Magnitude (10 to 100)
 
   const [isDraggingAim, setIsDraggingAim] = useState(false);
+
+  // Trajectory trail history
+  const [pastTrails, setPastTrails] = useState([]); // List of past shot polylines
+  const [showAllPastTrails, setShowAllPastTrails] = useState(false);
 
   // Simulation state
   const [isSimulating, setIsSimulating] = useState(false);
@@ -39,7 +43,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
     return pt.matrixTransform(svg.getScreenCTM().inverse());
   };
 
-  // Update angle and power from pointer position
+  // Update angle and power from pointer position WITHOUT audio noise on micro adjustments
   const updateAimFromPointer = (e) => {
     if (isSimulating) return;
     const coords = getSVGCoordinates(e);
@@ -55,7 +59,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
 
     setAngle(deg);
     setPower(newPower);
-    playPopSound(soundEnabled);
+    // NOTE: Removed playPopSound here to avoid audio noise during smooth trajectory aiming
   };
 
   const handlePointerDown = (e) => {
@@ -86,6 +90,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
     setIsSimulating(false);
     setProjectilePos(null);
     setTrail([]);
+    setPastTrails([]); // Clear past trails for new orbit
     setGameStatus('idle');
     playSnapSound(soundEnabled);
   }, [soundEnabled]);
@@ -124,6 +129,23 @@ export default function SpaceGravityGame({ soundEnabled }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleLaunch, isSimulating]);
 
+  // Save current trail to history when shot finishes
+  const finalizeShot = (status, finalTrail) => {
+    setIsSimulating(false);
+    setGameStatus(status);
+
+    if (finalTrail.length > 1) {
+      setPastTrails((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          points: finalTrail,
+          status,
+        },
+      ]);
+    }
+  };
+
   // Physics Loop
   useEffect(() => {
     if (!isSimulating) return;
@@ -144,14 +166,13 @@ export default function SpaceGravityGame({ soundEnabled }) {
       setProjectilePos(result.pos);
 
       localTrail.push({ x: result.pos.x, y: result.pos.y });
-      if (localTrail.length > 120) localTrail.shift();
+      if (localTrail.length > 250) localTrail.shift();
       setTrail([...localTrail]);
 
       const collision = checkCollisions(result.pos, target, planets, 760, 480);
 
       if (collision === 'target') {
-        setIsSimulating(false);
-        setGameStatus('hit_target');
+        finalizeShot('hit_target', localTrail);
         setScore((s) => s + 100);
         playVictorySound(soundEnabled);
         try {
@@ -161,15 +182,13 @@ export default function SpaceGravityGame({ soundEnabled }) {
       }
 
       if (collision === 'planet') {
-        setIsSimulating(false);
-        setGameStatus('hit_planet');
+        finalizeShot('hit_planet', localTrail);
         playSnapSound(soundEnabled);
         return;
       }
 
       if (collision === 'out_of_bounds') {
-        setIsSimulating(false);
-        setGameStatus('out');
+        finalizeShot('out', localTrail);
         return;
       }
 
@@ -191,6 +210,18 @@ export default function SpaceGravityGame({ soundEnabled }) {
     y: ship.y + aimLength * Math.sin(rad),
   };
 
+  // Compute trails to display (either all or last 3 with fading opacities)
+  const displayedPastTrails = showAllPastTrails
+    ? pastTrails.map((t) => ({ ...t, opacity: 0.35 }))
+    : pastTrails.slice(-3).map((t, idx, arr) => {
+        const distFromNewest = arr.length - 1 - idx;
+        const opacities = [0.6, 0.35, 0.15];
+        return {
+          ...t,
+          opacity: opacities[distFromNewest] || 0.15,
+        };
+      });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* Canvas Card */}
@@ -200,8 +231,26 @@ export default function SpaceGravityGame({ soundEnabled }) {
             <span style={{ fontSize: '1.4rem' }}>🚀</span>
             <span className="canvas-title">Gravity Slingshot Launcher</span>
           </div>
-          <div className="help-tip">
-            <span>⌨️ Press [Space Bar] or click Launch! to shoot!</span>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {pastTrails.length > 0 && (
+              <button
+                className={`btn-icon ${showAllPastTrails ? 'active' : ''}`}
+                onClick={() => setShowAllPastTrails((v) => !v)}
+                title="Toggle showing all past shot trails"
+              >
+                {showAllPastTrails ? <Eye size={16} /> : <EyeOff size={16} />}
+                <span>
+                  {showAllPastTrails
+                    ? `Showing All (${pastTrails.length})`
+                    : 'Show All Past Shots'}
+                </span>
+              </button>
+            )}
+
+            <div className="help-tip">
+              <span>⌨️ Press [Space Bar] or click Launch! to shoot!</span>
+            </div>
           </div>
         </div>
 
@@ -232,10 +281,29 @@ export default function SpaceGravityGame({ soundEnabled }) {
           {/* Space Backdrop */}
           <rect width="760" height="480" fill="url(#spaceBg)" />
 
+          {/* Faded Historical Past Shot Trails */}
+          {displayedPastTrails.map((past) => (
+            <polyline
+              key={past.id}
+              points={past.points.map((p) => `${p.x},${p.y}`).join(' ')}
+              fill="none"
+              stroke={
+                past.status === 'hit_target'
+                  ? '#4ade80'
+                  : past.status === 'hit_planet'
+                  ? '#f87171'
+                  : '#cbd5e1'
+              }
+              strokeWidth="2"
+              strokeDasharray="4 3"
+              strokeLinecap="round"
+              opacity={past.opacity}
+            />
+          ))}
+
           {/* Planets with Gravity Fields */}
           {planets.map((planet) => (
             <g key={planet.id}>
-              {/* Gravity Well Field Ring */}
               <circle
                 cx={planet.x}
                 cy={planet.y}
@@ -247,7 +315,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
                 opacity="0.35"
               />
 
-              {/* Planet Body */}
               <circle
                 cx={planet.x}
                 cy={planet.y}
@@ -262,7 +329,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
                 fill="rgba(255, 255, 255, 0.25)"
               />
 
-              {/* Mass Label */}
               <text
                 x={planet.x}
                 y={planet.y + planet.radius + 16}
@@ -356,7 +422,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
             </text>
           </g>
 
-          {/* Projectile Trail Line */}
+          {/* Active Projectile Trail Line */}
           {trail.length > 1 && (
             <polyline
               points={trail.map((p) => `${p.x},${p.y}`).join(' ')}
@@ -364,7 +430,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
               stroke="#f43f5e"
               strokeWidth="3.5"
               strokeLinecap="round"
-              opacity="0.85"
+              opacity="0.95"
             />
           )}
 
@@ -555,7 +621,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
                 lineHeight: '1.4',
               }}
             >
-              💡 <strong>Quick Controls:</strong> Click & drag to aim, then hit the <strong>[Space Bar]</strong> on your keyboard to fire!
+              💡 <strong>Past Shot History:</strong> Faded dashed lines show your previous trajectory attempts so you can fine-tune your slingshot curve!
             </div>
           </div>
         </div>
