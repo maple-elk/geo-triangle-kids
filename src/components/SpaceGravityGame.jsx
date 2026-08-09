@@ -7,7 +7,7 @@ import {
   DEFAULT_G,
 } from '../utils/physics';
 import { playPopSound, playSnapSound, playVictorySound } from '../utils/audio';
-import { Play, RotateCcw, Compass, Zap, Eye, EyeOff, Sliders, RefreshCw } from 'lucide-react';
+import { Play, RotateCcw, Compass, Zap, Eye, EyeOff, Sliders } from 'lucide-react';
 
 export default function SpaceGravityGame({ soundEnabled }) {
   const svgRef = useRef(null);
@@ -134,10 +134,26 @@ export default function SpaceGravityGame({ soundEnabled }) {
     setGameStatus('flying');
   }, [isSimulating, angle, power, ship, soundEnabled]);
 
-  // Keyboard shortcut listener: Spacebar to launch!
+  // Keyboard controls: Arrow Keys for angle & power, Spacebar to launch!
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if ((e.code === 'Space' || e.key === ' ') && !isSimulating) {
+      if (isSimulating) return;
+
+      const step = e.shiftKey ? 5 : 1;
+
+      if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        setAngle((prev) => (prev - step + 360) % 360);
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        setAngle((prev) => (prev + step) % 360);
+      } else if (e.code === 'ArrowUp') {
+        e.preventDefault();
+        setPower((prev) => Math.min(100, prev + step));
+      } else if (e.code === 'ArrowDown') {
+        e.preventDefault();
+        setPower((prev) => Math.max(10, prev - step));
+      } else if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
         handleLaunch();
       }
@@ -221,7 +237,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
         return;
       }
 
-      // Safeguard max steps to prevent infinite loop (1500 steps ≈ 25 seconds of flight)
+      // Safeguard max steps
       if (localTrail.length > 1500) {
         finalizeShot('out', localTrail);
         return;
@@ -284,7 +300,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
             )}
 
             <div className="help-tip">
-              <span>⌨️ Press [Space Bar] to shoot!</span>
+              <span>⌨️ ◀▶ Angle • ▲▼ Power • [Space] Shoot</span>
             </div>
           </div>
         </div>
@@ -316,7 +332,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
           {/* Space Backdrop */}
           <rect width="760" height="480" fill="url(#spaceBg)" />
 
-          {/* Faded Historical Past Shot Trails (Complete lines) */}
+          {/* Faded Historical Past Shot Trails */}
           {displayedPastTrails.map((past) => (
             <polyline
               key={past.id}
@@ -509,7 +525,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
                   fontWeight: '600',
                 }}
               >
-                <span>Launch Angle (θ)</span>
+                <span>Launch Angle (θ) [◀ ▶]</span>
                 <span style={{ color: 'var(--color-corner-a)' }}>{angle}°</span>
               </div>
               <input
@@ -532,7 +548,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
                   fontWeight: '600',
                 }}
               >
-                <span>Launch Power (|v|)</span>
+                <span>Launch Power (|v|) [▲ ▼]</span>
                 <span style={{ color: 'var(--color-corner-c)' }}>
                   {power} Speed
                 </span>
@@ -579,7 +595,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* Number of Planets Control */}
             <div>
               <div
                 style={{
@@ -612,7 +627,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
               </div>
             </div>
 
-            {/* Gravity Strength G */}
             <div>
               <div
                 style={{
@@ -637,7 +651,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
               />
             </div>
 
-            {/* Mass / Density Multiplier */}
             <div>
               <div
                 style={{
@@ -666,7 +679,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
               />
             </div>
 
-            {/* Auto Next Level Checkbox */}
             <label
               style={{
                 display: 'flex',
@@ -766,6 +778,16 @@ export default function SpaceGravityGame({ soundEnabled }) {
                 🌌 Flew out of solar system! Decrease power or aim closer!
               </div>
             )}
+
+            <div
+              style={{
+                fontSize: '0.82rem',
+                color: 'var(--color-text-muted)',
+                lineHeight: '1.4',
+              }}
+            >
+              💡 <strong>Keyboard Controls:</strong> Use <strong>Left/Right Arrows</strong> to rotate launch angle, <strong>Up/Down Arrows</strong> for power (hold <strong>Shift</strong> for 5x fast adjustments), and <strong>Spacebar</strong> to shoot!
+            </div>
           </div>
         </div>
       </div>
