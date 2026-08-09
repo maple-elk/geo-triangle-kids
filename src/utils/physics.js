@@ -514,10 +514,6 @@ export function checkCollisions(pos, vel, level, shooter = 'player', width = 960
     }
   }
 
-  // Check out of bounds
-  if (pos.x < -650 || pos.x > width + 650 || pos.y < -650 || pos.y > height + 650) {
-    return { type: 'out_of_bounds' };
-  }
-
+  // No out-of-bounds limit: projectile can travel infinitely into deep space!
   return { type: 'none' };
 }

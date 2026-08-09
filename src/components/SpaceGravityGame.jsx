@@ -365,6 +365,21 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
     [enableEnemyShip, level, triggerEnemyTurn, updateDynamicCamera]
   );
 
+  // Manually stop active flight / end turn with second spacebar press or button click
+  const handleStopFlight = useCallback(() => {
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+    if (enemyAnimRef.current) cancelAnimationFrame(enemyAnimRef.current);
+
+    updateDynamicCamera(null);
+
+    if (isSimulating) {
+      finalizeShot('stopped', trail);
+    } else if (gameStatus === 'enemy_flying') {
+      setTurnOwner('player');
+      setGameStatus('idle');
+    }
+  }, [isSimulating, gameStatus, trail, finalizeShot, updateDynamicCamera]);
+
   // Launch player projectile
   const handleLaunch = useCallback(() => {
     if (isSimulating || turnOwner !== 'player') return;
@@ -395,14 +410,16 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
     setGameStatus('flying');
   }, [isSimulating, turnOwner, roundCompleted, angle, power, ship, boosters, handleNewLevel, soundEnabled]);
 
-  // Keyboard controls
+  // Keyboard controls: Arrow Keys for angle & power, Spacebar to Launch OR Stop Flight OR Advance Level!
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.code === 'Space' || e.key === ' ') {
         e.preventDefault();
         if (roundCompleted) {
           handleNewLevel();
-        } else if (!isSimulating && turnOwner === 'player') {
+        } else if (isSimulating || gameStatus === 'enemy_flying') {
+          handleStopFlight();
+        } else if (turnOwner === 'player') {
           handleLaunch();
         }
         return;
@@ -429,7 +446,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleLaunch, isSimulating, turnOwner, roundCompleted, handleNewLevel]);
+  }, [handleLaunch, isSimulating, gameStatus, turnOwner, roundCompleted, handleNewLevel, handleStopFlight]);
 
   // Physics Animation Loop for Player Shot
   useEffect(() => {
@@ -1432,13 +1449,22 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
 
               <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
                 <button
-                  className="btn-primary"
-                  style={{ flex: 1 }}
-                  onClick={handleLaunch}
-                  disabled={isSimulating || turnOwner !== 'player'}
+                  className={isSimulating || gameStatus === 'enemy_flying' ? 'btn-primary btn-danger' : 'btn-primary'}
+                  style={{ flex: 1, backgroundColor: (isSimulating || gameStatus === 'enemy_flying') ? '#ef4444' : undefined }}
+                  onClick={() => {
+                    if (roundCompleted) handleNewLevel();
+                    else if (isSimulating || gameStatus === 'enemy_flying') handleStopFlight();
+                    else handleLaunch();
+                  }}
                 >
                   <Play size={18} />
-                  <span>{roundCompleted ? 'Next Solar System [Space]' : 'Launch! [Space]'}</span>
+                  <span>
+                    {roundCompleted
+                      ? 'Next Solar System [Space]'
+                      : isSimulating || gameStatus === 'enemy_flying'
+                      ? 'Stop Flight [Space] 🛑'
+                      : 'Launch! [Space]'}
+                  </span>
                 </button>
 
                 <button
