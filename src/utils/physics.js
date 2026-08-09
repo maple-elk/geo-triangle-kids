@@ -4,7 +4,7 @@
 
 export const DEFAULT_G = 400; // Default Gravitational Constant
 
-// Generate random level layout with planets, target, spaceship, and optional space phenomena
+// Generate random level layout with planets, target, spaceship, enemy ship, and optional space phenomena
 export function generateRandomLevel(width = 960, height = 600, config = {}) {
   const target = {
     x: width - 100,
@@ -90,8 +90,8 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
       id: 'bh_1',
       x: bx,
       y: by,
-      radius: 18, // Singularity radius
-      eventRadius: 46, // Event Horizon radius
+      radius: 18,
+      eventRadius: 46,
       mass: 220 * massMult,
     };
     blackHoles.push(bh);
@@ -156,7 +156,7 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
       x: rx,
       y: ry,
       radius: 24,
-      mass: -140 * massMult, // Negative mass for repulsive anti-gravity
+      mass: -140 * massMult,
       color: '#38bdf8',
     };
     pulsars.push(pulsar);
@@ -206,7 +206,29 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     occupiedList.push(shieldObj);
   }
 
-  // Generate random spaceship position
+  // 8. Optional Hostile Enemy Spaceship
+  let enemyShip = null;
+  if (config.enableEnemyShip) {
+    let ex, ey;
+    let attempts = 0;
+    do {
+      ex = width - 260 + Math.random() * 140;
+      ey = 90 + Math.random() * (height - 180);
+      attempts++;
+    } while (isPositionOccupied(ex, ey, 90) && attempts < 120);
+
+    enemyShip = {
+      id: 'enemy_1',
+      x: ex,
+      y: ey,
+      radius: 20,
+      status: 'active', // 'active' | 'disabled'
+      name: 'Enemy Interceptor',
+    };
+    occupiedList.push(enemyShip);
+  }
+
+  // Generate random player spaceship position
   let sx, sy, shipOverlap;
   let shipAttempts = 0;
   do {
@@ -230,10 +252,61 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     pulsars,
     boosters,
     shields,
+    enemyShip,
   };
 }
 
-// Calculate individual gravitational acceleration vectors from planets, black holes, pulsars
+// AI Aiming Trajectory Predictor for Enemy Counter-Attack
+export function calculateEnemyAim(enemyShip, playerShip, level, gravityG = DEFAULT_G) {
+  if (!enemyShip || enemyShip.status !== 'active') return null;
+
+  const dx = playerShip.x - enemyShip.x;
+  const dy = playerShip.y - enemyShip.y;
+  const directAngle = Math.atan2(dy, dx);
+
+  let bestAngle = directAngle;
+  let bestPower = 55;
+  let minClosestDist = Infinity;
+
+  // Test candidate angles around direct line
+  for (let dDeg = -40; dDeg <= 40; dDeg += 8) {
+    const candidateAngle = directAngle + (dDeg * Math.PI) / 180;
+    for (let candidatePower = 35; candidatePower <= 75; candidatePower += 15) {
+      let simPos = { x: enemyShip.x, y: enemyShip.y };
+      let simVel = {
+        x: (candidatePower / 4.8) * Math.cos(candidateAngle),
+        y: (candidatePower / 4.8) * Math.sin(candidateAngle),
+      };
+
+      let closest = Infinity;
+      for (let step = 0; step < 180; step++) {
+        const physicsStep = updateProjectilePhysics(simPos, simVel, level, 0.016, gravityG, 1.0);
+        simPos = physicsStep.pos;
+        simVel = physicsStep.vel;
+
+        const dToPlayer = Math.hypot(simPos.x - playerShip.x, simPos.y - playerShip.y);
+        if (dToPlayer < closest) closest = dToPlayer;
+      }
+
+      if (closest < minClosestDist) {
+        minClosestDist = closest;
+        bestAngle = candidateAngle;
+        bestPower = candidatePower;
+      }
+    }
+  }
+
+  return {
+    angleDeg: Math.round(((bestAngle * 180) / Math.PI + 360) % 360),
+    power: bestPower,
+    initialVel: {
+      x: (bestPower / 4.8) * Math.cos(bestAngle),
+      y: (bestPower / 4.8) * Math.sin(bestAngle),
+    },
+  };
+}
+
+// Calculate individual gravitational acceleration vectors
 export function calculateIndividualGravitationalAccels(x, y, level, gravityG = DEFAULT_G) {
   const { planets = [], blackHoles = [], pulsars = [] } = level;
   const sources = [
@@ -360,13 +433,31 @@ export function updateProjectilePhysics(
   };
 }
 
-// Check collisions: 'target', 'planet', 'black_hole', 'shield_bounce', 'out_of_bounds', or 'none'
-export function checkCollisions(pos, vel, level, width = 960, height = 600) {
-  const { target, planets = [], blackHoles = [], shields = [] } = level;
+// Check collisions: 'target', 'hit_enemy', 'hit_player', 'planet', 'black_hole', 'shield_bounce', 'out_of_bounds', or 'none'
+export function checkCollisions(pos, vel, level, shooter = 'player', width = 960, height = 600) {
+  const { target, ship, enemyShip, planets = [], blackHoles = [], shields = [] } = level;
 
-  // Check target hit
-  if (Math.hypot(pos.x - target.x, pos.y - target.y) <= target.radius + 6) {
+  // Check target hit (only player can hit target)
+  if (shooter === 'player' && Math.hypot(pos.x - target.x, pos.y - target.y) <= target.radius + 6) {
     return { type: 'target' };
+  }
+
+  // Check player hit enemy ship
+  if (
+    shooter === 'player' &&
+    enemyShip &&
+    enemyShip.status === 'active' &&
+    Math.hypot(pos.x - enemyShip.x, pos.y - enemyShip.y) <= enemyShip.radius + 6
+  ) {
+    return { type: 'hit_enemy', name: 'Enemy Interceptor' };
+  }
+
+  // Check enemy hit player ship
+  if (
+    shooter === 'enemy' &&
+    Math.hypot(pos.x - ship.x, pos.y - ship.y) <= 18
+  ) {
+    return { type: 'hit_player', name: 'Your Ship' };
   }
 
   // Check Black Hole Event Horizon hit
@@ -380,7 +471,6 @@ export function checkCollisions(pos, vel, level, width = 960, height = 600) {
   for (const sh of shields) {
     const d = Math.hypot(pos.x - sh.x, pos.y - sh.y);
     if (d <= sh.shieldRadius && d >= sh.radius) {
-      // Reflect velocity along normal
       const nx = (pos.x - sh.x) / d;
       const ny = (pos.y - sh.y) / d;
       const dot = vel.x * nx + vel.y * ny;

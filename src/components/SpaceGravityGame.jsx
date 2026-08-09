@@ -6,10 +6,11 @@ import {
   calculateGravitationalAccel,
   calculateIndividualGravitationalAccels,
   checkCollisions,
+  calculateEnemyAim,
   DEFAULT_G,
 } from '../utils/physics';
 import { playPopSound, playSnapSound, playVictorySound } from '../utils/audio';
-import { Play, RotateCcw, Compass, Zap, Eye, EyeOff, Sliders, Activity, ChevronUp, ChevronDown } from 'lucide-react';
+import { Play, RotateCcw, Compass, Zap, Eye, EyeOff, Sliders, Activity, ChevronUp, ChevronDown, ShieldAlert } from 'lucide-react';
 
 export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   const svgRef = useRef(null);
@@ -28,6 +29,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   const [enablePulsars, setEnablePulsars] = useState(false);
   const [enableBoosters, setEnableBoosters] = useState(false);
   const [enableShields, setEnableShields] = useState(false);
+  const [enableEnemyShip, setEnableEnemyShip] = useState(false);
 
   // Visual Overlays
   const [showGravityGradients, setShowGravityGradients] = useState(true);
@@ -48,6 +50,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       enablePulsars: false,
       enableBoosters: false,
       enableShields: false,
+      enableEnemyShip: false,
     })
   );
 
@@ -66,14 +69,25 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   const [projectileVel, setProjectileVel] = useState(null);
   const [projectileAccel, setProjectileAccel] = useState({ ax: 0, ay: 0 });
   const [trail, setTrail] = useState([]);
-  const [gameStatus, setGameStatus] = useState('idle'); // 'idle' | 'flying' | 'hit_target' | 'hit_planet' | 'black_hole' | 'out'
+  const [gameStatus, setGameStatus] = useState('idle'); // 'idle' | 'flying' | 'hit_target' | 'hit_enemy' | 'hit_planet' | 'black_hole' | 'out'
+  const [turnOwner, setTurnOwner] = useState('player'); // 'player' | 'enemy'
   const [score, setScore] = useState(0);
 
+  // Enemy Counter-Attack Simulation State
+  const [enemyProjectilePos, setEnemyProjectilePos] = useState(null);
+  const [enemyProjectileVel, setEnemyProjectileVel] = useState(null);
+  const [enemyTrail, setEnemyTrail] = useState([]);
+
   const animRef = useRef(null);
+  const enemyAnimRef = useRef(null);
   const autoNextTimerRef = useRef(null);
   const velRef = useRef({ x: 0, y: 0 });
   const posRef = useRef({ x: 0, y: 0 });
   const warpCooldownRef = useRef(0);
+
+  const enemyVelRef = useRef({ x: 0, y: 0 });
+  const enemyPosRef = useRef({ x: 0, y: 0 });
+  const enemyWarpCooldownRef = useRef(0);
 
   const {
     ship,
@@ -85,6 +99,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
     pulsars = [],
     boosters = [],
     shields = [],
+    enemyShip,
   } = level;
 
   // Generate new level with current customization settings
@@ -99,6 +114,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
         enablePulsars,
         enableBoosters,
         enableShields,
+        enableEnemyShip,
       };
 
       setLevel(generateRandomLevel(960, 600, cfg));
@@ -106,9 +122,13 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       setProjectilePos(null);
       setProjectileVel(null);
       setProjectileAccel({ ax: 0, ay: 0 });
+      setEnemyProjectilePos(null);
+      setEnemyProjectileVel(null);
       setTrail([]);
+      setEnemyTrail([]);
       setPastTrails([]);
       setGameStatus('idle');
+      setTurnOwner('player');
       playSnapSound(soundEnabled);
     },
     [
@@ -120,6 +140,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       enablePulsars,
       enableBoosters,
       enableShields,
+      enableEnemyShip,
       soundEnabled,
     ]
   );
@@ -136,7 +157,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
 
   // Update angle and power from pointer position
   const updateAimFromPointer = (e) => {
-    if (isSimulating) return;
+    if (isSimulating || turnOwner !== 'player') return;
     const coords = getSVGCoordinates(e);
     const dx = coords.x - ship.x;
     const dy = coords.y - ship.y;
@@ -152,7 +173,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   };
 
   const handlePointerDown = (e) => {
-    if (isSimulating) return;
+    if (isSimulating || turnOwner !== 'player') return;
     setIsDraggingAim(true);
     e.target.setPointerCapture(e.pointerId);
     updateAimFromPointer(e);
@@ -173,9 +194,116 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
     }
   };
 
-  // Launch projectile
+  // Trigger Enemy Counter-Attack Turn
+  const triggerEnemyTurn = useCallback(() => {
+    if (!enemyShip || enemyShip.status !== 'active') return;
+
+    setTurnOwner('enemy');
+    setGameStatus('enemy_aiming');
+
+    setTimeout(() => {
+      const aimResult = calculateEnemyAim(enemyShip, ship, level, gravityG);
+      if (!aimResult) {
+        setTurnOwner('player');
+        setGameStatus('idle');
+        return;
+      }
+
+      playPopSound(soundEnabled);
+
+      enemyPosRef.current = { x: enemyShip.x, y: enemyShip.y };
+      enemyVelRef.current = aimResult.initialVel;
+      enemyWarpCooldownRef.current = 0;
+
+      setEnemyProjectilePos({ x: enemyShip.x, y: enemyShip.y });
+      setEnemyProjectileVel(aimResult.initialVel);
+      setEnemyTrail([{ x: enemyShip.x, y: enemyShip.y }]);
+      setGameStatus('enemy_flying');
+
+      let localEnemyTrail = [{ x: enemyShip.x, y: enemyShip.y }];
+
+      const enemyLoop = () => {
+        const result = updateProjectilePhysics(
+          enemyPosRef.current,
+          enemyVelRef.current,
+          level,
+          0.016,
+          gravityG,
+          simSpeedScale,
+          enemyWarpCooldownRef.current
+        );
+
+        enemyPosRef.current = result.pos;
+        enemyVelRef.current = result.vel;
+        enemyWarpCooldownRef.current = result.warpCooldown;
+
+        setEnemyProjectilePos(result.pos);
+        setEnemyProjectileVel(result.vel);
+
+        localEnemyTrail.push({ x: result.pos.x, y: result.pos.y });
+        setEnemyTrail([...localEnemyTrail]);
+
+        const collision = checkCollisions(result.pos, result.vel, level, 'enemy', 960, 600);
+
+        if (collision.type === 'hit_player') {
+          setGameStatus('hit_player');
+          playSnapSound(soundEnabled);
+          setTurnOwner('player');
+          return;
+        }
+
+        if (collision.type === 'planet' || collision.type === 'black_hole' || collision.type === 'out_of_bounds') {
+          setTurnOwner('player');
+          setGameStatus('idle');
+          return;
+        }
+
+        if (localEnemyTrail.length > 2500) {
+          setTurnOwner('player');
+          setGameStatus('idle');
+          return;
+        }
+
+        enemyAnimRef.current = requestAnimationFrame(enemyLoop);
+      };
+
+      enemyAnimRef.current = requestAnimationFrame(enemyLoop);
+    }, 700);
+  }, [enemyShip, ship, level, gravityG, simSpeedScale, soundEnabled]);
+
+  // Save full completed shot trail to history
+  const finalizeShot = useCallback(
+    (status, finalTrail) => {
+      setIsSimulating(false);
+      setGameStatus(status);
+
+      if (finalTrail.length > 1) {
+        setPastTrails((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
+            points: finalTrail,
+            status,
+          },
+        ]);
+      }
+
+      // Auto-generate new planets when target is achieved
+      if (status === 'hit_target' && autoNextOnTarget) {
+        autoNextTimerRef.current = setTimeout(() => {
+          handleNewLevel();
+        }, 1400);
+      } else if (status !== 'hit_target' && enableEnemyShip && level.enemyShip && level.enemyShip.status === 'active') {
+        // Trigger Enemy Counter-Attack!
+        triggerEnemyTurn();
+      }
+    },
+    [autoNextOnTarget, enableEnemyShip, level, handleNewLevel, triggerEnemyTurn]
+  );
+
+  // Launch player projectile
   const handleLaunch = useCallback(() => {
-    if (isSimulating) return;
+    if (isSimulating || turnOwner !== 'player') return;
 
     if (autoNextTimerRef.current) {
       clearTimeout(autoNextTimerRef.current);
@@ -200,12 +328,12 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
     setTrail([{ x: ship.x, y: ship.y }]);
     setIsSimulating(true);
     setGameStatus('flying');
-  }, [isSimulating, angle, power, ship, boosters, soundEnabled]);
+  }, [isSimulating, turnOwner, angle, power, ship, boosters, soundEnabled]);
 
   // Keyboard controls: Arrow Keys for angle & power, Spacebar to launch!
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (isSimulating) return;
+      if (isSimulating || turnOwner !== 'player') return;
 
       const step = e.shiftKey ? 5 : 1;
 
@@ -229,35 +357,9 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleLaunch, isSimulating]);
+  }, [handleLaunch, isSimulating, turnOwner]);
 
-  // Save full completed shot trail to history
-  const finalizeShot = useCallback(
-    (status, finalTrail) => {
-      setIsSimulating(false);
-      setGameStatus(status);
-
-      if (finalTrail.length > 1) {
-        setPastTrails((prev) => [
-          ...prev,
-          {
-            id: Date.now(),
-            points: finalTrail,
-            status,
-          },
-        ]);
-      }
-
-      if (status === 'hit_target' && autoNextOnTarget) {
-        autoNextTimerRef.current = setTimeout(() => {
-          handleNewLevel();
-        }, 1400);
-      }
-    },
-    [autoNextOnTarget, handleNewLevel]
-  );
-
-  // Physics Animation Loop
+  // Physics Animation Loop for Player Shot
   useEffect(() => {
     if (!isSimulating) return;
 
@@ -285,7 +387,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       localTrail.push({ x: result.pos.x, y: result.pos.y });
       setTrail([...localTrail]);
 
-      const collision = checkCollisions(result.pos, result.vel, level, 960, 600);
+      const collision = checkCollisions(result.pos, result.vel, level, 'player', 960, 600);
 
       if (collision.type === 'target') {
         finalizeShot('hit_target', localTrail);
@@ -293,6 +395,17 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
         playVictorySound(soundEnabled);
         try {
           confetti({ particleCount: 120, spread: 90, origin: { y: 0.6 } });
+        } catch (e) {}
+        return;
+      }
+
+      if (collision.type === 'hit_enemy') {
+        if (enemyShip) enemyShip.status = 'disabled';
+        finalizeShot('hit_enemy', localTrail);
+        setScore((s) => s + 150);
+        playVictorySound(soundEnabled);
+        try {
+          confetti({ particleCount: 150, spread: 100, origin: { y: 0.5 } });
         } catch (e) {}
         return;
       }
@@ -332,7 +445,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [isSimulating, level, gravityG, simSpeedScale, finalizeShot, soundEnabled]);
+  }, [isSimulating, level, gravityG, simSpeedScale, enemyShip, finalizeShot, soundEnabled]);
 
   // Aiming vector end point in SVG
   const rad = (angle * Math.PI) / 180;
@@ -413,6 +526,22 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {gameStatus === 'hit_enemy' && (
+              <div className="status-badge" style={{ background: 'rgba(236, 72, 153, 0.3)', color: '#ec4899', border: '1px solid #ec4899' }}>
+                💥 Enemy Ship Disabled (+150 pts)!
+              </div>
+            )}
+            {gameStatus === 'hit_player' && (
+              <div className="status-badge" style={{ background: 'rgba(239, 68, 68, 0.3)', color: '#ef4444', border: '1px solid #ef4444' }}>
+                💥 Direct Hit! Enemy orbital fire struck your ship!
+              </div>
+            )}
+            {gameStatus === 'enemy_aiming' && (
+              <div className="status-badge" style={{ background: 'rgba(245, 158, 11, 0.3)', color: '#f59e0b', border: '1px solid #f59e0b' }}>
+                👾 Enemy Interceptor Targeting...
+              </div>
+            )}
+
             {pastTrails.length > 0 && (
               <button
                 className={`btn-icon ${showAllPastTrails ? 'active' : ''}`}
@@ -492,6 +621,8 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
               stroke={
                 past.status === 'hit_target'
                   ? '#4ade80'
+                  : past.status === 'hit_enemy'
+                  ? '#ec4899'
                   : past.status === 'black_hole'
                   ? '#f97316'
                   : past.status === 'hit_planet'
@@ -655,6 +786,61 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
             </g>
           ))}
 
+          {/* 8. Optional Hostile Enemy Spaceship */}
+          {enemyShip && (
+            <g transform={`translate(${enemyShip.x}, ${enemyShip.y})`}>
+              {enemyShip.status === 'active' ? (
+                <>
+                  <circle r={enemyShip.radius + 8} fill="none" stroke="#ef4444" strokeWidth="2" strokeDasharray="4 4">
+                    <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="5s" repeatCount="indefinite" />
+                  </circle>
+                  <circle r={enemyShip.radius} fill="rgba(239, 68, 68, 0.35)" stroke="#ef4444" strokeWidth="2.5" />
+                  <text textAnchor="middle" dy="5" fontSize="15">
+                    👾
+                  </text>
+                  <text y={enemyShip.radius + 16} textAnchor="middle" fill="#ef4444" fontSize="10" fontWeight="700">
+                    Enemy Interceptor
+                  </text>
+                </>
+              ) : (
+                <>
+                  <circle r={enemyShip.radius} fill="rgba(100, 116, 139, 0.4)" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="3 3" />
+                  <text textAnchor="middle" dy="5" fontSize="14" opacity="0.5">
+                    💥
+                  </text>
+                  <text y={enemyShip.radius + 14} textAnchor="middle" fill="#94a3b8" fontSize="9" fontWeight="700">
+                    Disabled
+                  </text>
+                </>
+              )}
+            </g>
+          )}
+
+          {/* Enemy Active Flying Projectile */}
+          {enemyTrail.length > 1 && (
+            <polyline
+              points={enemyTrail.map((p) => `${p.x},${p.y}`).join(' ')}
+              fill="none"
+              stroke="#ef4444"
+              strokeWidth="3.5"
+              strokeDasharray="6 3"
+              strokeLinecap="round"
+              opacity="0.95"
+            />
+          )}
+
+          {enemyProjectilePos && (
+            <circle
+              cx={enemyProjectilePos.x}
+              cy={enemyProjectilePos.y}
+              r="7"
+              fill="#fef2f2"
+              stroke="#ef4444"
+              strokeWidth="3"
+              filter="url(#planetGlow)"
+            />
+          )}
+
           {/* Target Station / Portal */}
           <g transform={`translate(${target.x}, ${target.y})`}>
             <circle
@@ -687,7 +873,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
           </g>
 
           {/* Aiming Vector Line & Drag Handle */}
-          {!isSimulating && (
+          {!isSimulating && turnOwner === 'player' && (
             <g>
               <line
                 x1={ship.x}
@@ -913,7 +1099,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                     <span>Power: {power}</span>
                   </div>
                 </div>
-                <button className="btn-primary" onClick={handleLaunch} disabled={isSimulating} style={{ padding: '8px 16px', fontSize: '0.9rem' }}>
+                <button className="btn-primary" onClick={handleLaunch} disabled={isSimulating || turnOwner !== 'player'} style={{ padding: '8px 16px', fontSize: '0.9rem' }}>
                   <Play size={16} />
                   <span>Launch [Space]</span>
                 </button>
@@ -946,27 +1132,30 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                     <input type="range" min="0.2" max="2.0" step="0.1" value={simSpeedScale} onChange={(e) => setSimSpeedScale(Number(e.target.value))} style={{ width: '100%', accentColor: '#4ade80' }} />
                   </div>
 
-                  {/* 6 Space Objects */}
+                  {/* 7 Space Objects */}
                   <div style={{ background: 'rgba(255,255,255,0.04)', padding: '8px', borderRadius: '8px' }}>
                     <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#f1f5f9', marginBottom: '6px' }}>🌌 Optional Space Objects</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.75rem', color: '#e2e8f0' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={enableBlackHoles} onChange={(e) => { setEnableBlackHoles(e.target.checked); handleNewLevel({ ...level, enableBlackHoles: e.target.checked, enableAsteroids, enableWormholes, enablePulsars, enableBoosters, enableShields }); }} /> 🕳️ Black Hole
+                        <input type="checkbox" checked={enableEnemyShip} onChange={(e) => { setEnableEnemyShip(e.target.checked); handleNewLevel({ ...level, enableEnemyShip: e.target.checked, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableBoosters, enableShields }); }} /> 👾 Enemy Ship
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={enableAsteroids} onChange={(e) => { setEnableAsteroids(e.target.checked); handleNewLevel({ ...level, enableBlackHoles, enableAsteroids: e.target.checked, enableWormholes, enablePulsars, enableBoosters, enableShields }); }} /> 🪨 Asteroids
+                        <input type="checkbox" checked={enableBlackHoles} onChange={(e) => { setEnableBlackHoles(e.target.checked); handleNewLevel({ ...level, enableBlackHoles: e.target.checked, enableEnemyShip, enableAsteroids, enableWormholes, enablePulsars, enableBoosters, enableShields }); }} /> 🕳️ Black Hole
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={enableWormholes} onChange={(e) => { setEnableWormholes(e.target.checked); handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes: e.target.checked, enablePulsars, enableBoosters, enableShields }); }} /> 🌀 Wormholes
+                        <input type="checkbox" checked={enableAsteroids} onChange={(e) => { setEnableAsteroids(e.target.checked); handleNewLevel({ ...level, enableAsteroids: e.target.checked, enableEnemyShip, enableBlackHoles, enableWormholes, enablePulsars, enableBoosters, enableShields }); }} /> 🪨 Asteroids
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={enablePulsars} onChange={(e) => { setEnablePulsars(e.target.checked); handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars: e.target.checked, enableBoosters, enableShields }); }} /> ⚡ Pulsar
+                        <input type="checkbox" checked={enableWormholes} onChange={(e) => { setEnableWormholes(e.target.checked); handleNewLevel({ ...level, enableWormholes: e.target.checked, enableEnemyShip, enableBlackHoles, enableAsteroids, enablePulsars, enableBoosters, enableShields }); }} /> 🌀 Wormholes
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={enableBoosters} onChange={(e) => { setEnableBoosters(e.target.checked); handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableBoosters: e.target.checked, enableShields }); }} /> 🚀 Speed Gate
+                        <input type="checkbox" checked={enablePulsars} onChange={(e) => { setEnablePulsars(e.target.checked); handleNewLevel({ ...level, enablePulsars: e.target.checked, enableEnemyShip, enableBlackHoles, enableAsteroids, enableWormholes, enableBoosters, enableShields }); }} /> ⚡ Pulsar
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={enableShields} onChange={(e) => { setEnableShields(e.target.checked); handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableBoosters, enableShields: e.target.checked }); }} /> 🛡️ Shield Deflector
+                        <input type="checkbox" checked={enableBoosters} onChange={(e) => { setEnableBoosters(e.target.checked); handleNewLevel({ ...level, enableBoosters: e.target.checked, enableEnemyShip, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableShields }); }} /> 🚀 Speed Gate
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={enableShields} onChange={(e) => { setEnableShields(e.target.checked); handleNewLevel({ ...level, enableShields: e.target.checked, enableEnemyShip, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableBoosters }); }} /> 🛡️ Shield Deflector
                       </label>
                     </div>
                   </div>
@@ -1049,7 +1238,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                   min="0"
                   max="360"
                   value={angle}
-                  disabled={isSimulating}
+                  disabled={isSimulating || turnOwner !== 'player'}
                   onChange={(e) => setAngle(Number(e.target.value))}
                   style={{ width: '100%', accentColor: 'var(--color-corner-a)' }}
                 />
@@ -1074,7 +1263,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                   min="10"
                   max="100"
                   value={power}
-                  disabled={isSimulating}
+                  disabled={isSimulating || turnOwner !== 'player'}
                   onChange={(e) => setPower(Number(e.target.value))}
                   style={{ width: '100%', accentColor: 'var(--color-corner-c)' }}
                 />
@@ -1085,7 +1274,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                   className="btn-primary"
                   style={{ flex: 1 }}
                   onClick={handleLaunch}
-                  disabled={isSimulating}
+                  disabled={isSimulating || turnOwner !== 'player'}
                 >
                   <Play size={18} />
                   <span>Launch! [Space]</span>
@@ -1114,10 +1303,23 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
+                  checked={enableEnemyShip}
+                  onChange={(e) => {
+                    setEnableEnemyShip(e.target.checked);
+                    handleNewLevel({ ...level, enableEnemyShip: e.target.checked, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableBoosters, enableShields });
+                  }}
+                  style={{ width: '16px', height: '16px', accentColor: '#ef4444' }}
+                />
+                <span>👾 Enemy Interceptor Duel</span>
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
                   checked={enableBlackHoles}
                   onChange={(e) => {
                     setEnableBlackHoles(e.target.checked);
-                    handleNewLevel({ ...level, enableBlackHoles: e.target.checked, enableAsteroids, enableWormholes, enablePulsars, enableBoosters, enableShields });
+                    handleNewLevel({ ...level, enableBlackHoles: e.target.checked, enableEnemyShip, enableAsteroids, enableWormholes, enablePulsars, enableBoosters, enableShields });
                   }}
                   style={{ width: '16px', height: '16px', accentColor: '#f97316' }}
                 />
@@ -1130,7 +1332,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                   checked={enableAsteroids}
                   onChange={(e) => {
                     setEnableAsteroids(e.target.checked);
-                    handleNewLevel({ ...level, enableBlackHoles, enableAsteroids: e.target.checked, enableWormholes, enablePulsars, enableBoosters, enableShields });
+                    handleNewLevel({ ...level, enableAsteroids: e.target.checked, enableEnemyShip, enableBlackHoles, enableWormholes, enablePulsars, enableBoosters, enableShields });
                   }}
                   style={{ width: '16px', height: '16px', accentColor: '#f59e0b' }}
                 />
@@ -1143,7 +1345,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                   checked={enableWormholes}
                   onChange={(e) => {
                     setEnableWormholes(e.target.checked);
-                    handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes: e.target.checked, enablePulsars, enableBoosters, enableShields });
+                    handleNewLevel({ ...level, enableWormholes: e.target.checked, enableEnemyShip, enableBlackHoles, enableAsteroids, enablePulsars, enableBoosters, enableShields });
                   }}
                   style={{ width: '16px', height: '16px', accentColor: '#a855f7' }}
                 />
@@ -1156,7 +1358,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                   checked={enablePulsars}
                   onChange={(e) => {
                     setEnablePulsars(e.target.checked);
-                    handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars: e.target.checked, enableBoosters, enableShields });
+                    handleNewLevel({ ...level, enablePulsars: e.target.checked, enableEnemyShip, enableBlackHoles, enableAsteroids, enableWormholes, enableBoosters, enableShields });
                   }}
                   style={{ width: '16px', height: '16px', accentColor: '#38bdf8' }}
                 />
@@ -1169,7 +1371,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                   checked={enableBoosters}
                   onChange={(e) => {
                     setEnableBoosters(e.target.checked);
-                    handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableBoosters: e.target.checked, enableShields });
+                    handleNewLevel({ ...level, enableBoosters: e.target.checked, enableEnemyShip, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableShields });
                   }}
                   style={{ width: '16px', height: '16px', accentColor: '#10b981' }}
                 />
@@ -1182,7 +1384,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                   checked={enableShields}
                   onChange={(e) => {
                     setEnableShields(e.target.checked);
-                    handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableBoosters, enableShields: e.target.checked });
+                    handleNewLevel({ ...level, enableShields: e.target.checked, enableEnemyShip, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableBoosters });
                   }}
                   style={{ width: '16px', height: '16px', accentColor: '#64748b' }}
                 />
