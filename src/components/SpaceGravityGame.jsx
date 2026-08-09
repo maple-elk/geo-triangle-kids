@@ -50,7 +50,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
     const deg = Math.round(((rad * 180) / Math.PI + 360) % 360);
 
     const dist = Math.hypot(dx, dy);
-    // Map distance (20px to 180px) to power range (10 to 100)
+    // Map distance to power range (10 to 100)
     const newPower = Math.max(10, Math.min(100, Math.round(dist / 1.7)));
 
     setAngle(deg);
@@ -91,13 +91,12 @@ export default function SpaceGravityGame({ soundEnabled }) {
   }, [soundEnabled]);
 
   // Launch projectile
-  const handleLaunch = () => {
+  const handleLaunch = useCallback(() => {
     if (isSimulating) return;
 
     playPopSound(soundEnabled);
 
     const rad = (angle * Math.PI) / 180;
-    // Tuned speed for pleasant, readable travel
     const initialVel = {
       x: (power / 4.8) * Math.cos(rad),
       y: (power / 4.8) * Math.sin(rad),
@@ -110,7 +109,20 @@ export default function SpaceGravityGame({ soundEnabled }) {
     setTrail([{ x: ship.x, y: ship.y }]);
     setIsSimulating(true);
     setGameStatus('flying');
-  };
+  }, [isSimulating, angle, power, ship, soundEnabled]);
+
+  // Keyboard shortcut listener: Spacebar to launch!
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.code === 'Space' || e.key === ' ') && !isSimulating) {
+        e.preventDefault();
+        handleLaunch();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleLaunch, isSimulating]);
 
   // Physics Loop
   useEffect(() => {
@@ -189,7 +201,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
             <span className="canvas-title">Gravity Slingshot Launcher</span>
           </div>
           <div className="help-tip">
-            <span>👇 Click & drag directly on the spaceship or vector handle to aim!</span>
+            <span>⌨️ Press [Space Bar] or click Launch! to shoot!</span>
           </div>
         </div>
 
@@ -298,7 +310,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
           {/* Interactive Aiming Vector Line & Drag Handle */}
           {!isSimulating && (
             <g>
-              {/* Slingshot Vector Arrow */}
               <line
                 x1={ship.x}
                 y1={ship.y}
@@ -309,7 +320,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
                 strokeDasharray="6 4"
               />
 
-              {/* Interactive Handle Ring */}
               <g
                 onPointerDown={handlePointerDown}
                 style={{ cursor: isDraggingAim ? 'grabbing' : 'grab' }}
@@ -333,7 +343,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
             </g>
           )}
 
-          {/* Spaceship Handle (Also Draggable!) */}
+          {/* Spaceship Handle */}
           <g
             transform={`translate(${ship.x}, ${ship.y})`}
             onPointerDown={handlePointerDown}
@@ -389,7 +399,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Angle Slider */}
             <div>
               <div
                 style={{
@@ -413,7 +422,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
               />
             </div>
 
-            {/* Power Magnitude Slider */}
             <div>
               <div
                 style={{
@@ -439,7 +447,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
               />
             </div>
 
-            {/* Launch & Reset Buttons */}
             <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
               <button
                 className="btn-primary"
@@ -448,7 +455,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
                 disabled={isSimulating}
               >
                 <Play size={18} />
-                <span>Launch!</span>
+                <span>Launch! [Space]</span>
               </button>
 
               <button
@@ -548,7 +555,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
                 lineHeight: '1.4',
               }}
             >
-              💡 <strong>Mouse Controls:</strong> Click & drag directly on the yellow aim handle knob or spaceship to rotate angle and stretch launch power!
+              💡 <strong>Quick Controls:</strong> Click & drag to aim, then hit the <strong>[Space Bar]</strong> on your keyboard to fire!
             </div>
           </div>
         </div>
