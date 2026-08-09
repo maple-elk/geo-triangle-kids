@@ -147,8 +147,8 @@ export function checkCollisions(pos, target, planets, width = 960, height = 600)
     }
   }
 
-  // Check out of bounds
-  if (pos.x < -150 || pos.x > width + 150 || pos.y < -150 || pos.y > height + 150) {
+  // Check out of bounds (expanded padding to 650px for deep space long orbits)
+  if (pos.x < -650 || pos.x > width + 650 || pos.y < -650 || pos.y > height + 650) {
     return 'out_of_bounds';
   }
 

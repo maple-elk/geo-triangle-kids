@@ -3,11 +3,12 @@ import confetti from 'canvas-confetti';
 import {
   generateRandomLevel,
   updateProjectilePhysics,
+  calculateGravitationalAccel,
   checkCollisions,
   DEFAULT_G,
 } from '../utils/physics';
 import { playPopSound, playSnapSound, playVictorySound } from '../utils/audio';
-import { Play, RotateCcw, Compass, Zap, Eye, EyeOff, Sliders } from 'lucide-react';
+import { Play, RotateCcw, Compass, Zap, Eye, EyeOff, Sliders, Activity, Magnet, Target } from 'lucide-react';
 
 export default function SpaceGravityGame({ soundEnabled }) {
   const svgRef = useRef(null);
@@ -17,6 +18,10 @@ export default function SpaceGravityGame({ soundEnabled }) {
   const [gravityG, setGravityG] = useState(DEFAULT_G); // 100..1000
   const [massMult, setMassMult] = useState(1.0); // 0.5..2.0
   const [autoNextOnTarget, setAutoNextOnTarget] = useState(true);
+
+  // Visual Overlays
+  const [showGravityGradients, setShowGravityGradients] = useState(true);
+  const [showGravityVectors, setShowGravityVectors] = useState(true);
 
   // Level & Physics State (Spacious 960x600 canvas)
   const [level, setLevel] = useState(() =>
@@ -34,6 +39,8 @@ export default function SpaceGravityGame({ soundEnabled }) {
   // Simulation state
   const [isSimulating, setIsSimulating] = useState(false);
   const [projectilePos, setProjectilePos] = useState(null);
+  const [projectileVel, setProjectileVel] = useState(null);
+  const [projectileAccel, setProjectileAccel] = useState({ ax: 0, ay: 0 });
   const [trail, setTrail] = useState([]);
   const [gameStatus, setGameStatus] = useState('idle'); // 'idle' | 'flying' | 'hit_target' | 'hit_planet' | 'out'
   const [score, setScore] = useState(0);
@@ -52,8 +59,10 @@ export default function SpaceGravityGame({ soundEnabled }) {
       setLevel(generateRandomLevel(960, 600, cfg));
       setIsSimulating(false);
       setProjectilePos(null);
+      setProjectileVel(null);
+      setProjectileAccel({ ax: 0, ay: 0 });
       setTrail([]);
-      setPastTrails([]); // Clear past trails for fresh solar system
+      setPastTrails([]);
       setGameStatus('idle');
       playSnapSound(soundEnabled);
     },
@@ -129,6 +138,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
     velRef.current = initialVel;
 
     setProjectilePos({ x: ship.x, y: ship.y });
+    setProjectileVel(initialVel);
     setTrail([{ x: ship.x, y: ship.y }]);
     setIsSimulating(true);
     setGameStatus('flying');
@@ -209,6 +219,8 @@ export default function SpaceGravityGame({ soundEnabled }) {
       velRef.current = result.vel;
 
       setProjectilePos(result.pos);
+      setProjectileVel(result.vel);
+      setProjectileAccel(result.accel);
 
       // Keep ENTIRE trajectory line for long travel shots
       localTrail.push({ x: result.pos.x, y: result.pos.y });
@@ -237,8 +249,8 @@ export default function SpaceGravityGame({ soundEnabled }) {
         return;
       }
 
-      // Safeguard max steps
-      if (localTrail.length > 1800) {
+      // Max steps safeguard (3500 steps ≈ 60 seconds of long orbit travel)
+      if (localTrail.length > 3500) {
         finalizeShot('out', localTrail);
         return;
       }
@@ -259,6 +271,35 @@ export default function SpaceGravityGame({ soundEnabled }) {
   const aimVectorEnd = {
     x: ship.x + aimLength * Math.cos(rad),
     y: ship.y + aimLength * Math.sin(rad),
+  };
+
+  // Live Telemetry Calculations
+  const currentPos = projectilePos || ship;
+  const targetDist = Math.round(
+    Math.hypot(currentPos.x - target.x, currentPos.y - target.y)
+  );
+
+  const currentSpeed = projectileVel
+    ? Math.round(Math.hypot(projectileVel.x, projectileVel.y) * 10) / 10
+    : 0;
+
+  const currentHeading = projectileVel
+    ? Math.round(
+        ((Math.atan2(projectileVel.y, projectileVel.x) * 180) / Math.PI + 360) % 360
+      )
+    : angle;
+
+  // Calculate live net gravity pull vector on projectile
+  const netAccel = isSimulating
+    ? projectileAccel
+    : calculateGravitationalAccel(ship.x, ship.y, planets, gravityG);
+
+  const netAccelMag = Math.hypot(netAccel.ax, netAccel.ay);
+  const netAccelAngle = Math.atan2(netAccel.ay, netAccel.ax);
+  const gravityVectorLength = Math.min(80, Math.max(16, netAccelMag * 12));
+  const gravityVectorEnd = {
+    x: currentPos.x + gravityVectorLength * Math.cos(netAccelAngle),
+    y: currentPos.y + gravityVectorLength * Math.sin(netAccelAngle),
   };
 
   // Compute trails to display (either all or last 3 with fading opacities)
@@ -319,6 +360,15 @@ export default function SpaceGravityGame({ soundEnabled }) {
               <stop offset="100%" stopColor="#020617" />
             </radialGradient>
 
+            {/* Dynamic Planet Gravity Field Radial Gradients */}
+            {planets.map((planet) => (
+              <radialGradient key={planet.id} id={`gravGrad_${planet.id}`}>
+                <stop offset="0%" stopColor={planet.fill} stopOpacity="0.45" />
+                <stop offset="50%" stopColor={planet.fill} stopOpacity="0.18" />
+                <stop offset="100%" stopColor={planet.fill} stopOpacity="0.0" />
+              </radialGradient>
+            ))}
+
             <filter id="planetGlow" x="-50%" y="-50%" width="200%" height="200%">
               <feGaussianBlur stdDeviation="8" result="blur" />
               <feComposite in="SourceGraphic" in2="blur" operator="over" />
@@ -331,6 +381,19 @@ export default function SpaceGravityGame({ soundEnabled }) {
 
           {/* Space Backdrop */}
           <rect width="960" height="600" fill="url(#spaceBg)" />
+
+          {/* Optional Planet Gravity Field Soft Colored Gradients */}
+          {showGravityGradients &&
+            planets.map((planet) => (
+              <circle
+                key={`grad_${planet.id}`}
+                cx={planet.x}
+                cy={planet.y}
+                r={planet.radius * 2.9}
+                fill={`url(#gravGrad_${planet.id})`}
+                style={{ pointerEvents: 'none' }}
+              />
+            ))}
 
           {/* Faded Historical Past Shot Trails */}
           {displayedPastTrails.map((past) => (
@@ -460,7 +523,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
             </g>
           )}
 
-          {/* Spaceship Handle (Randomized position, interactive) */}
+          {/* Spaceship Handle */}
           <g
             transform={`translate(${ship.x}, ${ship.y})`}
             onPointerDown={handlePointerDown}
@@ -485,6 +548,36 @@ export default function SpaceGravityGame({ soundEnabled }) {
             />
           )}
 
+          {/* Net Gravity Force Pull Vector Arrow on Projectile */}
+          {showGravityVectors && (isSimulating || netAccelMag > 0.05) && (
+            <g style={{ pointerEvents: 'none' }}>
+              <line
+                x1={currentPos.x}
+                y1={currentPos.y}
+                x2={gravityVectorEnd.x}
+                y2={gravityVectorEnd.y}
+                stroke="#38bdf8"
+                strokeWidth="2.5"
+                strokeDasharray="3 3"
+              />
+              <circle
+                cx={gravityVectorEnd.x}
+                cy={gravityVectorEnd.y}
+                r="4"
+                fill="#38bdf8"
+              />
+              <text
+                x={gravityVectorEnd.x + 8}
+                y={gravityVectorEnd.y + 4}
+                fill="#38bdf8"
+                fontSize="11"
+                fontWeight="700"
+              >
+                Fg
+              </text>
+            </g>
+          )}
+
           {/* Flying Projectile Orb */}
           {projectilePos && (
             <circle
@@ -497,6 +590,30 @@ export default function SpaceGravityGame({ soundEnabled }) {
               filter="url(#planetGlow)"
             />
           )}
+
+          {/* Top-Right HUD Badge: Distance to Target */}
+          <g transform="translate(730, 20)" style={{ pointerEvents: 'none' }}>
+            <rect
+              x="0"
+              y="0"
+              width="210"
+              height="36"
+              rx="10"
+              fill="rgba(15, 23, 42, 0.85)"
+              stroke="rgba(56, 189, 248, 0.4)"
+              strokeWidth="1.5"
+            />
+            <text
+              x="14"
+              y="23"
+              fill="#38bdf8"
+              fontSize="12"
+              fontWeight="700"
+              fontFamily="Outfit"
+            >
+              🎯 Target Distance: {targetDist} px
+            </text>
+          </g>
         </svg>
       </div>
 
@@ -587,21 +704,120 @@ export default function SpaceGravityGame({ soundEnabled }) {
           </div>
         </div>
 
-        {/* Physics & Universe Customization Settings */}
+        {/* Live Projectile Telemetry HUD */}
+        <div className="side-card">
+          <div className="card-title">
+            <Activity size={20} color="#4ade80" />
+            <span>Live Projectile Telemetry</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div className="sum-card" style={{ padding: '12px' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Speed (|v|)</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#4ade80' }}>
+                {currentSpeed} px/s
+              </div>
+            </div>
+
+            <div className="sum-card" style={{ padding: '12px' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Target Distance</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#38bdf8' }}>
+                {targetDist} px
+              </div>
+            </div>
+
+            <div className="sum-card" style={{ padding: '12px' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Flight Path Points</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#fbbf24' }}>
+                {trail.length} pts
+              </div>
+            </div>
+
+            <div className="sum-card" style={{ padding: '12px' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Travel Heading</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#ff5e7e' }}>
+                {currentHeading}°
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Physics & Overlay Controls */}
         <div className="side-card">
           <div className="card-title">
             <Sliders size={20} color="var(--color-accent-purple)" />
-            <span>Universe & Randomness Controls</span>
+            <span>Universe & Overlay Toggles</span>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* Visual Overlay Toggles */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '0.85rem',
+                  color: '#e2e8f0',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={showGravityGradients}
+                  onChange={(e) => setShowGravityGradients(e.target.checked)}
+                  style={{ width: '16px', height: '16px', accentColor: '#8b5cf6' }}
+                />
+                <span>Show Planet Gravity Field Gradients 🌈</span>
+              </label>
+
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '0.85rem',
+                  color: '#e2e8f0',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={showGravityVectors}
+                  onChange={(e) => setShowGravityVectors(e.target.checked)}
+                  style={{ width: '16px', height: '16px', accentColor: '#38bdf8' }}
+                />
+                <span>Show Net Gravity Force Pull Vector (Fg) 🧲</span>
+              </label>
+
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '0.85rem',
+                  color: '#e2e8f0',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={autoNextOnTarget}
+                  onChange={(e) => setAutoNextOnTarget(e.target.checked)}
+                  style={{ width: '16px', height: '16px', accentColor: '#10b981' }}
+                />
+                <span>Auto-generate new planets on Target Hit 🎯</span>
+              </label>
+            </div>
+
+            {/* Planet Count */}
             <div>
               <div
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
-                  marginBottom: '6px',
-                  fontSize: '0.9rem',
+                  marginBottom: '4px',
+                  fontSize: '0.85rem',
                   fontWeight: '600',
                 }}
               >
@@ -627,17 +843,18 @@ export default function SpaceGravityGame({ soundEnabled }) {
               </div>
             </div>
 
+            {/* Gravity Strength G */}
             <div>
               <div
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
-                  marginBottom: '6px',
-                  fontSize: '0.9rem',
+                  marginBottom: '4px',
+                  fontSize: '0.85rem',
                   fontWeight: '600',
                 }}
               >
-                <span>Gravity Strength Constant (G)</span>
+                <span>Gravity Constant (G)</span>
                 <span style={{ color: '#38bdf8' }}>{gravityG}</span>
               </div>
               <input
@@ -649,144 +866,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
                 onChange={(e) => setGravityG(Number(e.target.value))}
                 style={{ width: '100%', accentColor: '#38bdf8' }}
               />
-            </div>
-
-            <div>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  marginBottom: '6px',
-                  fontSize: '0.9rem',
-                  fontWeight: '600',
-                }}
-              >
-                <span>Planet Density / Mass</span>
-                <span style={{ color: '#f59e0b' }}>{massMult}x</span>
-              </div>
-              <input
-                type="range"
-                min="0.5"
-                max="2.5"
-                step="0.25"
-                value={massMult}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
-                  setMassMult(val);
-                  handleNewLevel({ planetCount, massMult: val });
-                }}
-                style={{ width: '100%', accentColor: '#f59e0b' }}
-              />
-            </div>
-
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontSize: '0.85rem',
-                color: '#e2e8f0',
-                cursor: 'pointer',
-                marginTop: '4px',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={autoNextOnTarget}
-                onChange={(e) => setAutoNextOnTarget(e.target.checked)}
-                style={{ width: '16px', height: '16px', accentColor: '#10b981' }}
-              />
-              <span>Auto-generate new planets on Target Hit 🎯</span>
-            </label>
-          </div>
-        </div>
-
-        {/* Physics & Game Status Panel */}
-        <div className="side-card">
-          <div className="card-title">
-            <Zap size={20} color="#38bdf8" />
-            <span>Slingshot Status</span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                background: 'rgba(15, 23, 42, 0.7)',
-                padding: '12px 16px',
-                borderRadius: 'var(--radius-md)',
-              }}
-            >
-              <span>Total Score</span>
-              <span
-                style={{
-                  fontFamily: 'Fredoka',
-                  fontSize: '1.4rem',
-                  color: 'var(--color-accent-gold)',
-                }}
-              >
-                {score} pts
-              </span>
-            </div>
-
-            {gameStatus === 'hit_target' && (
-              <div
-                style={{
-                  background: 'rgba(16, 185, 129, 0.2)',
-                  border: '1px solid #10b981',
-                  color: '#4ade80',
-                  padding: '12px',
-                  borderRadius: 'var(--radius-md)',
-                  textAlign: 'center',
-                  fontWeight: '700',
-                }}
-              >
-                🎯 TARGET HIT! Auto-loading next solar system...
-              </div>
-            )}
-
-            {gameStatus === 'hit_planet' && (
-              <div
-                style={{
-                  background: 'rgba(239, 68, 68, 0.2)',
-                  border: '1px solid #ef4444',
-                  color: '#fca5a5',
-                  padding: '12px',
-                  borderRadius: 'var(--radius-md)',
-                  textAlign: 'center',
-                  fontWeight: '600',
-                }}
-              >
-                💥 Crashed into Planet Gravity Field! Adjust angle & launch power!
-              </div>
-            )}
-
-            {gameStatus === 'out' && (
-              <div
-                style={{
-                  background: 'rgba(245, 158, 11, 0.2)',
-                  border: '1px solid #f59e0b',
-                  color: '#fef08a',
-                  padding: '12px',
-                  borderRadius: 'var(--radius-md)',
-                  textAlign: 'center',
-                  fontWeight: '600',
-                }}
-              >
-                🌌 Flew out of solar system! Decrease power or aim closer!
-              </div>
-            )}
-
-            <div
-              style={{
-                fontSize: '0.82rem',
-                color: 'var(--color-text-muted)',
-                lineHeight: '1.4',
-              }}
-            >
-              💡 <strong>Space Navigation:</strong> Spaceship starting positions are randomly placed each orbit with safe distance from all celestial bodies!
             </div>
           </div>
         </div>
