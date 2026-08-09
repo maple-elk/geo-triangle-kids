@@ -286,6 +286,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
     (status, finalTrail) => {
       setIsSimulating(false);
       setGameStatus(status);
+      setShowAllPastTrails(true);
 
       if (finalTrail.length > 1) {
         setPastTrails((prev) => [
@@ -1119,40 +1120,32 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
             </g>
           </svg>
 
-          {/* POST-MATCH END GAME SUMMARY MODAL OVERLAY */}
+          {/* COMPACT NON-BLOCKING POST-MATCH SUMMARY BANNER */}
           {showEndSummary && (
             <div
               style={{
                 position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                background: 'rgba(2, 6, 23, 0.78)',
-                backdropFilter: 'blur(8px)',
+                top: '16px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 30,
+                width: '92%',
+                maxWidth: '680px',
+                background: 'rgba(15, 23, 42, 0.92)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                border: '1.5px solid rgba(56, 189, 248, 0.5)',
+                borderRadius: '16px',
+                padding: '12px 20px',
+                boxShadow: '0 12px 35px rgba(0, 0, 0, 0.7)',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 30,
-                borderRadius: 'var(--radius-md)',
+                justifyContent: 'space-between',
+                gap: '16px',
               }}
             >
-              <div
-                style={{
-                  background: 'rgba(15, 23, 42, 0.94)',
-                  border: '2px solid rgba(56, 189, 248, 0.4)',
-                  borderRadius: '18px',
-                  padding: '28px 36px',
-                  maxWidth: '460px',
-                  width: '90%',
-                  textAlign: 'center',
-                  boxShadow: '0 20px 50px rgba(0, 0, 0, 0.8)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '16px',
-                }}
-              >
-                <div style={{ fontSize: '2.4rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '1.8rem' }}>
                   {gameStatus === 'hit_target'
                     ? '🎯'
                     : gameStatus === 'hit_enemy'
@@ -1160,67 +1153,35 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                     : gameStatus === 'hit_player'
                     ? '💥'
                     : '🌌'}
-                </div>
-
-                <div style={{ fontFamily: 'Fredoka', fontSize: '1.5rem', color: '#ffffff' }}>
-                  {gameStatus === 'hit_target'
-                    ? 'Target Station Destroyed!'
-                    : gameStatus === 'hit_enemy'
-                    ? 'Enemy Interceptor Obliterated!'
-                    : gameStatus === 'hit_player'
-                    ? 'Direct Hit! Enemy Destroyed Your Ship!'
-                    : gameStatus === 'black_hole'
-                    ? 'Swallowed by Black Hole!'
-                    : 'Orbit Ended'}
-                </div>
-
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '12px',
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    padding: '14px',
-                    borderRadius: '12px',
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Flight Trajectory</div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: '700', color: '#38bdf8' }}>
-                      {trail.length * 4} px
-                    </div>
+                </span>
+                <div>
+                  <div style={{ fontFamily: 'Fredoka', fontSize: '1.1rem', color: '#ffffff', lineHeight: 1.2 }}>
+                    {gameStatus === 'hit_target'
+                      ? 'Target Station Destroyed!'
+                      : gameStatus === 'hit_enemy'
+                      ? 'Enemy Interceptor Obliterated!'
+                      : gameStatus === 'hit_player'
+                      ? 'Direct Hit! Enemy Destroyed Your Ship!'
+                      : gameStatus === 'black_hole'
+                      ? 'Swallowed by Black Hole!'
+                      : 'Orbit Complete'}
                   </div>
-                  <div>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Total Shots Fired</div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: '700', color: '#fbbf24' }}>
-                      {pastTrails.length} shots
-                    </div>
+                  <div style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '2px', display: 'flex', gap: '12px' }}>
+                    <span>📏 Flight: <strong style={{ color: '#38bdf8' }}>{trail.length * 4}px</strong></span>
+                    <span>🎯 Shots: <strong style={{ color: '#fbbf24' }}>{pastTrails.length}</strong></span>
+                    <span>🏆 Score: <strong style={{ color: '#ec4899' }}>{score} pts</strong></span>
                   </div>
-                  <div>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Max Flight Speed</div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: '700', color: '#4ade80' }}>
-                      {currentSpeed} px/s
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Total Score</div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: '700', color: '#ec4899' }}>
-                      {score} pts
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
-                  <button
-                    className="btn-primary"
-                    style={{ flex: 1, padding: '12px 18px', fontSize: '1rem' }}
-                    onClick={() => handleNewLevel()}
-                  >
-                    <span>Next Solar System [Space]</span>
-                    <ArrowRight size={18} />
-                  </button>
                 </div>
               </div>
+
+              <button
+                className="btn-primary"
+                style={{ padding: '8px 16px', fontSize: '0.9rem', whiteSpace: 'nowrap' }}
+                onClick={() => handleNewLevel()}
+              >
+                <span>Next Solar System [Space]</span>
+                <ArrowRight size={16} />
+              </button>
             </div>
           )}
         </div>
