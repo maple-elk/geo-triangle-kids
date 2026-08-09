@@ -4,7 +4,7 @@
 
 export const DEFAULT_G = 400; // Default Gravitational Constant
 
-// Generate random level layout with planets, target, and randomized spaceship position
+// Generate random level layout with planets, target, spaceship, and optional space phenomena
 export function generateRandomLevel(width = 960, height = 600, config = {}) {
   const target = {
     x: width - 100,
@@ -19,7 +19,15 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
       : Math.max(1, Math.min(5, Number(countSetting)));
 
   const massMult = config.massMult ? Number(config.massMult) : 1.0;
+
+  // Space Objects lists
   const planets = [];
+  const blackHoles = [];
+  const asteroids = [];
+  const wormholes = [];
+  const pulsars = [];
+  const boosters = [];
+  const shields = [];
 
   const planetColors = [
     { fill: '#ec4899', glow: 'rgba(236, 72, 153, 0.35)', name: 'Magenta Prime' },
@@ -29,32 +37,31 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     { fill: '#10b981', glow: 'rgba(16, 185, 129, 0.35)', name: 'Verdant' },
   ];
 
-  // Generate planets
+  const occupiedList = [];
+
+  const isPositionOccupied = (x, y, minClearance = 80) => {
+    if (Math.hypot(x - target.x, y - target.y) < minClearance) return true;
+    for (const item of occupiedList) {
+      if (Math.hypot(x - item.x, y - item.y) < minClearance + item.radius) return true;
+    }
+    return false;
+  };
+
+  // 1. Generate Planets
   for (let i = 0; i < numPlanets; i++) {
-    let px, py, radius, mass, overlap;
+    let px, py, radius, mass;
     let attempts = 0;
 
     do {
-      overlap = false;
       px = 240 + Math.random() * (width - 440);
       py = 80 + Math.random() * (height - 160);
       radius = 28 + Math.floor(Math.random() * 36);
       mass = Math.round(radius * (1.2 + Math.random() * 1.5) * massMult);
-
-      if (Math.hypot(px - target.x, py - target.y) < radius + 90) overlap = true;
-
-      for (const p of planets) {
-        if (Math.hypot(px - p.x, py - p.y) < radius + p.radius + 60) {
-          overlap = true;
-          break;
-        }
-      }
       attempts++;
-    } while (overlap && attempts < 120);
+    } while (isPositionOccupied(px, py, radius + 40) && attempts < 120);
 
     const theme = planetColors[i % planetColors.length];
-
-    planets.push({
+    const planetObj = {
       id: i + 1,
       x: px,
       y: py,
@@ -63,42 +70,185 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
       fill: theme.fill,
       glow: theme.glow,
       name: theme.name,
-    });
+    };
+
+    planets.push(planetObj);
+    occupiedList.push(planetObj);
   }
 
-  // Generate random spaceship position (guaranteed no overlap with planets or target)
+  // 2. Optional Black Hole
+  if (config.enableBlackHoles) {
+    let bx, by;
+    let attempts = 0;
+    do {
+      bx = 280 + Math.random() * (width - 500);
+      by = 100 + Math.random() * (height - 200);
+      attempts++;
+    } while (isPositionOccupied(bx, by, 110) && attempts < 120);
+
+    const bh = {
+      id: 'bh_1',
+      x: bx,
+      y: by,
+      radius: 18, // Singularity radius
+      eventRadius: 46, // Event Horizon radius
+      mass: 220 * massMult,
+    };
+    blackHoles.push(bh);
+    occupiedList.push(bh);
+  }
+
+  // 3. Optional Asteroid Cloud
+  if (config.enableAsteroids) {
+    let ax, ay;
+    let attempts = 0;
+    do {
+      ax = 250 + Math.random() * (width - 450);
+      ay = 90 + Math.random() * (height - 180);
+      attempts++;
+    } while (isPositionOccupied(ax, ay, 90) && attempts < 120);
+
+    const ast = {
+      id: 'ast_1',
+      x: ax,
+      y: ay,
+      radius: 68,
+      dragFactor: 0.983,
+    };
+    asteroids.push(ast);
+    occupiedList.push(ast);
+  }
+
+  // 4. Optional Wormhole Portals
+  if (config.enableWormholes) {
+    let w1x, w1y, w2x, w2y;
+    let attempts = 0;
+    do {
+      w1x = 220 + Math.random() * 200;
+      w1y = 90 + Math.random() * (height - 180);
+      w2x = width - 360 + Math.random() * 200;
+      w2y = 90 + Math.random() * (height - 180);
+      attempts++;
+    } while (
+      (isPositionOccupied(w1x, w1y, 70) || isPositionOccupied(w2x, w2y, 70)) &&
+      attempts < 150
+    );
+
+    const portalA = { id: 'portal_a', x: w1x, y: w1y, radius: 22, color: '#06b6d4', pairId: 'portal_b' };
+    const portalB = { id: 'portal_b', x: w2x, y: w2y, radius: 22, color: '#a855f7', pairId: 'portal_a' };
+
+    wormholes.push(portalA, portalB);
+    occupiedList.push(portalA, portalB);
+  }
+
+  // 5. Optional Repulsive Pulsar
+  if (config.enablePulsars) {
+    let rx, ry;
+    let attempts = 0;
+    do {
+      rx = 260 + Math.random() * (width - 480);
+      ry = 90 + Math.random() * (height - 180);
+      attempts++;
+    } while (isPositionOccupied(rx, ry, 95) && attempts < 120);
+
+    const pulsar = {
+      id: 'pul_1',
+      x: rx,
+      y: ry,
+      radius: 24,
+      mass: -140 * massMult, // Negative mass for repulsive anti-gravity
+      color: '#38bdf8',
+    };
+    pulsars.push(pulsar);
+    occupiedList.push(pulsar);
+  }
+
+  // 6. Optional Speed Booster Gate
+  if (config.enableBoosters) {
+    let gx, gy;
+    let attempts = 0;
+    do {
+      gx = 240 + Math.random() * (width - 450);
+      gy = 90 + Math.random() * (height - 180);
+      attempts++;
+    } while (isPositionOccupied(gx, gy, 80) && attempts < 120);
+
+    const booster = {
+      id: 'boost_1',
+      x: gx,
+      y: gy,
+      radius: 26,
+      boostMult: 1.45,
+    };
+    boosters.push(booster);
+    occupiedList.push(booster);
+  }
+
+  // 7. Optional Elastic Shield Moon
+  if (config.enableShields) {
+    let mx, my;
+    let attempts = 0;
+    do {
+      mx = 260 + Math.random() * (width - 460);
+      my = 90 + Math.random() * (height - 180);
+      attempts++;
+    } while (isPositionOccupied(mx, my, 85) && attempts < 120);
+
+    const shieldObj = {
+      id: 'shield_1',
+      x: mx,
+      y: my,
+      radius: 20,
+      shieldRadius: 40,
+      mass: 40 * massMult,
+    };
+    shields.push(shieldObj);
+    occupiedList.push(shieldObj);
+  }
+
+  // Generate random spaceship position
   let sx, sy, shipOverlap;
   let shipAttempts = 0;
   do {
     shipOverlap = false;
-    sx = 70 + Math.random() * 180; // Left sector
+    sx = 70 + Math.random() * 180;
     sy = 70 + Math.random() * (height - 140);
 
-    if (Math.hypot(sx - target.x, sy - target.y) < 140) shipOverlap = true;
-
-    for (const p of planets) {
-      if (Math.hypot(sx - p.x, sy - p.y) < p.radius + 70) {
-        shipOverlap = true;
-        break;
-      }
-    }
+    if (isPositionOccupied(sx, sy, 80)) shipOverlap = true;
     shipAttempts++;
   } while (shipOverlap && shipAttempts < 150);
 
   const ship = { x: sx, y: sy };
 
-  return { ship, target, planets };
+  return {
+    ship,
+    target,
+    planets,
+    blackHoles,
+    asteroids,
+    wormholes,
+    pulsars,
+    boosters,
+    shields,
+  };
 }
 
-// Calculate individual gravitational acceleration vectors from each planet on (x, y)
-export function calculateIndividualGravitationalAccels(x, y, planets, gravityG = DEFAULT_G) {
-  return planets.map((p) => {
+// Calculate individual gravitational acceleration vectors from planets, black holes, pulsars
+export function calculateIndividualGravitationalAccels(x, y, level, gravityG = DEFAULT_G) {
+  const { planets = [], blackHoles = [], pulsars = [] } = level;
+  const sources = [
+    ...planets,
+    ...blackHoles.map((b) => ({ ...b, fill: '#f97316', name: 'Black Hole Singularity', mass: b.mass * 3.5 })),
+    ...pulsars.map((p) => ({ ...p, fill: '#38bdf8', name: 'Repulsive Pulsar' })),
+  ];
+
+  return sources.map((p) => {
     const dx = p.x - x;
     const dy = p.y - y;
     const distSq = dx * dx + dy * dy;
     const dist = Math.sqrt(distSq);
 
-    if (dist < p.radius * 0.5) {
+    if (dist < (p.radius || 20) * 0.5) {
       return { planet: p, ax: 0, ay: 0, accelMag: 0, angle: 0, dist };
     }
 
@@ -118,18 +268,25 @@ export function calculateIndividualGravitationalAccels(x, y, planets, gravityG =
   });
 }
 
-// Calculate total net gravitational acceleration at position (x, y) from all planets
-export function calculateGravitationalAccel(x, y, planets, gravityG = DEFAULT_G) {
+// Calculate total net gravitational acceleration at position (x, y)
+export function calculateGravitationalAccel(x, y, level, gravityG = DEFAULT_G) {
   let ax = 0;
   let ay = 0;
 
-  for (const p of planets) {
+  const { planets = [], blackHoles = [], pulsars = [] } = level;
+  const sources = [
+    ...planets,
+    ...blackHoles.map((b) => ({ ...b, mass: b.mass * 3.5 })),
+    ...pulsars,
+  ];
+
+  for (const p of sources) {
     const dx = p.x - x;
     const dy = p.y - y;
     const distSq = dx * dx + dy * dy;
     const dist = Math.sqrt(distSq);
 
-    if (dist < p.radius * 0.5) continue;
+    if (dist < (p.radius || 20) * 0.5) continue;
 
     const accel = (gravityG * p.mass) / Math.max(distSq, 400);
 
@@ -140,47 +297,116 @@ export function calculateGravitationalAccel(x, y, planets, gravityG = DEFAULT_G)
   return { ax, ay };
 }
 
-// Step physics forward by dt seconds with configurable simulation speed scale
+// Step physics forward by dt seconds with space phenomena interactions
 export function updateProjectilePhysics(
   pos,
   vel,
-  planets,
+  level,
   dt = 0.016,
   gravityG = DEFAULT_G,
-  simSpeedScale = 1.0
+  simSpeedScale = 1.0,
+  warpCooldown = 0
 ) {
-  const { ax, ay } = calculateGravitationalAccel(pos.x, pos.y, planets, gravityG);
-
+  const { ax, ay } = calculateGravitationalAccel(pos.x, pos.y, level, gravityG);
   const SPEED_FACTOR = 0.55 * simSpeedScale;
 
-  const nVel = {
-    x: vel.x + ax * dt * 35 * SPEED_FACTOR,
-    y: vel.y + ay * dt * 35 * SPEED_FACTOR,
-  };
+  let vx = vel.x + ax * dt * 35 * SPEED_FACTOR;
+  let vy = vel.y + ay * dt * 35 * SPEED_FACTOR;
 
-  const nPos = {
-    x: pos.x + nVel.x * dt * 35 * SPEED_FACTOR,
-    y: pos.y + nVel.y * dt * 35 * SPEED_FACTOR,
-  };
-
-  return { pos: nPos, vel: nVel, accel: { ax, ay } };
-}
-
-// Check collisions: 'target', 'planet', 'out_of_bounds', or 'none'
-export function checkCollisions(pos, target, planets, width = 960, height = 600) {
-  if (Math.hypot(pos.x - target.x, pos.y - target.y) <= target.radius + 6) {
-    return 'target';
-  }
-
-  for (const p of planets) {
-    if (Math.hypot(pos.x - p.x, pos.y - p.y) <= p.radius + 5) {
-      return 'planet';
+  // 1. Asteroid Cloud Drag / Friction
+  const { asteroids = [], wormholes = [], boosters = [] } = level;
+  for (const ast of asteroids) {
+    if (Math.hypot(pos.x - ast.x, pos.y - ast.y) <= ast.radius) {
+      vx *= ast.dragFactor;
+      vy *= ast.dragFactor;
     }
   }
 
-  if (pos.x < -650 || pos.x > width + 650 || pos.y < -650 || pos.y > height + 650) {
-    return 'out_of_bounds';
+  // 2. Booster Speed Gate Pass-Through
+  for (const b of boosters) {
+    if (Math.hypot(pos.x - b.x, pos.y - b.y) <= b.radius && !b.boostedThisShot) {
+      vx *= b.boostMult;
+      vy *= b.boostMult;
+      b.boostedThisShot = true;
+    }
   }
 
-  return 'none';
+  let nPos = {
+    x: pos.x + vx * dt * 35 * SPEED_FACTOR,
+    y: pos.y + vy * dt * 35 * SPEED_FACTOR,
+  };
+
+  let newWarpCooldown = Math.max(0, warpCooldown - 1);
+
+  // 3. Wormhole Portal Teleportation
+  if (wormholes.length >= 2 && newWarpCooldown === 0) {
+    for (const w of wormholes) {
+      if (Math.hypot(nPos.x - w.x, nPos.y - w.y) <= w.radius) {
+        const destPortal = wormholes.find((item) => item.id === w.pairId);
+        if (destPortal) {
+          nPos = { x: destPortal.x, y: destPortal.y };
+          newWarpCooldown = 30; // 30 frames warp cooldown
+          break;
+        }
+      }
+    }
+  }
+
+  return {
+    pos: nPos,
+    vel: { x: vx, y: vy },
+    accel: { ax, ay },
+    warpCooldown: newWarpCooldown,
+  };
+}
+
+// Check collisions: 'target', 'planet', 'black_hole', 'shield_bounce', 'out_of_bounds', or 'none'
+export function checkCollisions(pos, vel, level, width = 960, height = 600) {
+  const { target, planets = [], blackHoles = [], shields = [] } = level;
+
+  // Check target hit
+  if (Math.hypot(pos.x - target.x, pos.y - target.y) <= target.radius + 6) {
+    return { type: 'target' };
+  }
+
+  // Check Black Hole Event Horizon hit
+  for (const bh of blackHoles) {
+    if (Math.hypot(pos.x - bh.x, pos.y - bh.y) <= bh.eventRadius) {
+      return { type: 'black_hole', name: 'Black Hole Event Horizon' };
+    }
+  }
+
+  // Check Elastic Shield Moon Bounce
+  for (const sh of shields) {
+    const d = Math.hypot(pos.x - sh.x, pos.y - sh.y);
+    if (d <= sh.shieldRadius && d >= sh.radius) {
+      // Reflect velocity along normal
+      const nx = (pos.x - sh.x) / d;
+      const ny = (pos.y - sh.y) / d;
+      const dot = vel.x * nx + vel.y * ny;
+
+      if (dot < 0) {
+        const rVx = vel.x - 2 * dot * nx;
+        const rVy = vel.y - 2 * dot * ny;
+        return {
+          type: 'shield_bounce',
+          reflectedVel: { x: rVx * 1.05, y: rVy * 1.05 },
+        };
+      }
+    }
+  }
+
+  // Check planet hits
+  for (const p of planets) {
+    if (Math.hypot(pos.x - p.x, pos.y - p.y) <= p.radius + 5) {
+      return { type: 'planet', name: p.name };
+    }
+  }
+
+  // Check out of bounds
+  if (pos.x < -650 || pos.x > width + 650 || pos.y < -650 || pos.y > height + 650) {
+    return { type: 'out_of_bounds' };
+  }
+
+  return { type: 'none' };
 }
