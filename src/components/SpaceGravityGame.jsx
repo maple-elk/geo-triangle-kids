@@ -77,16 +77,16 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   const currentViewBoxRef = useRef([0, 0, 960, 600]);
   const targetViewBoxRef = useRef([0, 0, 960, 600]);
 
-  // Set target viewBox bounds to enclose board and active projectile
+  // Set target viewBox bounds to enclose board and active projectile (clamped to max space arena)
   const updateCameraTarget = useCallback((activePos) => {
     if (!activePos) {
       targetViewBoxRef.current = [0, 0, 960, 600];
     } else {
       const margin = 180;
-      const minX = Math.min(0, activePos.x - margin);
-      const maxX = Math.max(960, activePos.x + margin);
-      const minY = Math.min(0, activePos.y - margin);
-      const maxY = Math.max(600, activePos.y + margin);
+      let minX = Math.min(0, activePos.x - margin);
+      let maxX = Math.max(960, activePos.x + margin);
+      let minY = Math.min(0, activePos.y - margin);
+      let maxY = Math.max(600, activePos.y + margin);
 
       let w = maxX - minX;
       let h = maxY - minY;
@@ -95,12 +95,28 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       if (w / h < aspect) {
         w = h * aspect;
         const cx = (minX + maxX) / 2;
-        targetViewBoxRef.current = [cx - w / 2, minY, w, h];
+        minX = cx - w / 2;
       } else {
         h = w / aspect;
         const cy = (minY + maxY) / 2;
-        targetViewBoxRef.current = [minX, cy - h / 2, w, h];
+        minY = cy - h / 2;
       }
+
+      // Clamp camera max zoom to outer space arena bounds
+      const MAX_W = 6800;
+      const MAX_H = 4250;
+      if (w > MAX_W) {
+        const cx = minX + w / 2;
+        w = MAX_W;
+        minX = cx - w / 2;
+      }
+      if (h > MAX_H) {
+        const cy = minY + h / 2;
+        h = MAX_H;
+        minY = cy - h / 2;
+      }
+
+      targetViewBoxRef.current = [minX, minY, w, h];
     }
   }, []);
 
@@ -670,6 +686,33 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
         </div>
 
         <div style={{ position: 'relative' }}>
+          {/* Fixed-Size HTML Telemetry HUD Badge (Always crisp & readable regardless of camera zoom) */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '16px',
+              right: '16px',
+              zIndex: 25,
+              background: 'rgba(15, 23, 42, 0.88)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              border: '1.5px solid rgba(56, 189, 248, 0.4)',
+              borderRadius: '12px',
+              padding: '8px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '16px',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              pointerEvents: 'none',
+              fontFamily: 'Outfit',
+              fontSize: '0.85rem',
+              fontWeight: '700',
+            }}
+          >
+            <span style={{ color: '#38bdf8' }}>🎯 Target: {targetDist} px</span>
+            <span style={{ color: '#4ade80' }}>⚡ Speed: {currentSpeed} px/s</span>
+          </div>
+
           <svg
             ref={svgRef}
             className="svg-viewport space-viewport"
@@ -703,8 +746,14 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
               </filter>
             </defs>
 
-            {/* Expanded Deep Space Backdrop */}
-            <rect x="-3500" y="-2500" width="8000" height="6000" fill="url(#spaceBg)" />
+            {/* Infinite Dynamic Deep Space Backdrop */}
+            <rect
+              x={viewBox[0] - 20000}
+              y={viewBox[1] - 20000}
+              width={viewBox[2] + 40000}
+              height={viewBox[3] + 40000}
+              fill="url(#spaceBg)"
+            />
 
             {/* Optional Planet Gravity Field Gradients */}
             {showGravityGradients &&
@@ -1160,39 +1209,6 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
               />
             )}
 
-            {/* Top-Right HUD Badge: Target Distance AND Live Speed */}
-            <g transform="translate(640, 20)" style={{ pointerEvents: 'none' }}>
-              <rect
-                x="0"
-                y="0"
-                width="300"
-                height="36"
-                rx="10"
-                fill="rgba(15, 23, 42, 0.88)"
-                stroke="rgba(56, 189, 248, 0.4)"
-                strokeWidth="1.5"
-              />
-              <text
-                x="14"
-                y="23"
-                fill="#38bdf8"
-                fontSize="12"
-                fontWeight="700"
-                fontFamily="Outfit"
-              >
-                🎯 Target: {targetDist} px
-              </text>
-              <text
-                x="160"
-                y="23"
-                fill="#4ade80"
-                fontSize="12"
-                fontWeight="700"
-                fontFamily="Outfit"
-              >
-                ⚡ Speed: {currentSpeed} px/s
-              </text>
-            </g>
           </svg>
 
           {/* COMPACT NON-BLOCKING POST-MATCH SUMMARY BANNER */}

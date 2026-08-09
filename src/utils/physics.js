@@ -514,6 +514,10 @@ export function checkCollisions(pos, vel, level, shooter = 'player', width = 960
     }
   }
 
-  // No out-of-bounds limit: projectile can travel infinitely into deep space!
+  // Generous Deep Space Outer Arena Boundary (7.5x standard board)
+  if (pos.x < -6000 || pos.x > 6960 || pos.y < -4000 || pos.y > 4600) {
+    return { type: 'out_of_bounds' };
+  }
+
   return { type: 'none' };
 }

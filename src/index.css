@@ -205,6 +205,8 @@ body {
 
 .svg-viewport.space-viewport {
   height: 540px;
+  overflow: hidden;
+  border-radius: var(--radius-md);
 }
 
 /* Fullscreen Mode Rules */
