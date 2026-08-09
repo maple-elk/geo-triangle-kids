@@ -6,12 +6,15 @@ import {
   checkCollisions,
 } from '../utils/physics';
 import { playPopSound, playSnapSound, playVictorySound } from '../utils/audio';
-import { Play, RotateCcw, Sparkles, Compass, Zap } from 'lucide-react';
+import { Play, RotateCcw, Compass, Zap } from 'lucide-react';
 
 export default function SpaceGravityGame({ soundEnabled }) {
+  const svgRef = useRef(null);
   const [level, setLevel] = useState(() => generateRandomLevel(760, 480));
   const [angle, setAngle] = useState(335); // Degrees (0 to 360)
   const [power, setPower] = useState(55); // Magnitude (10 to 100)
+
+  const [isDraggingAim, setIsDraggingAim] = useState(false);
 
   // Simulation state
   const [isSimulating, setIsSimulating] = useState(false);
@@ -25,6 +28,57 @@ export default function SpaceGravityGame({ soundEnabled }) {
   const posRef = useRef({ x: 0, y: 0 });
 
   const { ship, target, planets } = level;
+
+  // Convert screen pointer event to SVG space coordinates
+  const getSVGCoordinates = (e) => {
+    if (!svgRef.current) return { x: 0, y: 0 };
+    const svg = svgRef.current;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  };
+
+  // Update angle and power from pointer position
+  const updateAimFromPointer = (e) => {
+    if (isSimulating) return;
+    const coords = getSVGCoordinates(e);
+    const dx = coords.x - ship.x;
+    const dy = coords.y - ship.y;
+
+    const rad = Math.atan2(dy, dx);
+    const deg = Math.round(((rad * 180) / Math.PI + 360) % 360);
+
+    const dist = Math.hypot(dx, dy);
+    // Map distance (20px to 180px) to power range (10 to 100)
+    const newPower = Math.max(10, Math.min(100, Math.round(dist / 1.7)));
+
+    setAngle(deg);
+    setPower(newPower);
+    playPopSound(soundEnabled);
+  };
+
+  const handlePointerDown = (e) => {
+    if (isSimulating) return;
+    setIsDraggingAim(true);
+    e.target.setPointerCapture(e.pointerId);
+    updateAimFromPointer(e);
+  };
+
+  const handlePointerMove = (e) => {
+    if (isDraggingAim && !isSimulating) {
+      updateAimFromPointer(e);
+    }
+  };
+
+  const handlePointerUp = (e) => {
+    if (isDraggingAim) {
+      try {
+        e.target.releasePointerCapture(e.pointerId);
+      } catch (err) {}
+      setIsDraggingAim(false);
+    }
+  };
 
   // Generate new level
   const handleNewLevel = useCallback(() => {
@@ -42,11 +96,11 @@ export default function SpaceGravityGame({ soundEnabled }) {
 
     playPopSound(soundEnabled);
 
-    // Velocity components: vx = power * cos(rad), vy = power * sin(rad)
     const rad = (angle * Math.PI) / 180;
+    // Tuned speed for pleasant, readable travel
     const initialVel = {
-      x: (power / 7) * Math.cos(rad),
-      y: (power / 7) * Math.sin(rad),
+      x: (power / 4.8) * Math.cos(rad),
+      y: (power / 4.8) * Math.sin(rad),
     };
 
     posRef.current = { x: ship.x, y: ship.y };
@@ -58,7 +112,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
     setGameStatus('flying');
   };
 
-  // Animation Loop
+  // Physics Loop
   useEffect(() => {
     if (!isSimulating) return;
 
@@ -78,10 +132,9 @@ export default function SpaceGravityGame({ soundEnabled }) {
       setProjectilePos(result.pos);
 
       localTrail.push({ x: result.pos.x, y: result.pos.y });
-      if (localTrail.length > 80) localTrail.shift();
+      if (localTrail.length > 120) localTrail.shift();
       setTrail([...localTrail]);
 
-      // Check collisions
       const collision = checkCollisions(result.pos, target, planets, 760, 480);
 
       if (collision === 'target') {
@@ -118,9 +171,9 @@ export default function SpaceGravityGame({ soundEnabled }) {
     };
   }, [isSimulating, planets, target, soundEnabled]);
 
-  // Aiming vector end point
+  // Aiming vector end point in SVG
   const rad = (angle * Math.PI) / 180;
-  const aimLength = 15 + power * 0.9;
+  const aimLength = power * 1.7;
   const aimVectorEnd = {
     x: ship.x + aimLength * Math.cos(rad),
     y: ship.y + aimLength * Math.sin(rad),
@@ -136,19 +189,24 @@ export default function SpaceGravityGame({ soundEnabled }) {
             <span className="canvas-title">Gravity Slingshot Launcher</span>
           </div>
           <div className="help-tip">
-            <span>🎯 Adjust Launch Angle & Power to curve past gravity fields!</span>
+            <span>👇 Click & drag directly on the spaceship or vector handle to aim!</span>
           </div>
         </div>
 
-        <svg className="svg-viewport" viewBox="0 0 760 480">
+        <svg
+          ref={svgRef}
+          className="svg-viewport"
+          viewBox="0 0 760 480"
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          style={{ touchAction: 'none' }}
+        >
           <defs>
-            {/* Star Pattern Background */}
             <radialGradient id="spaceBg" cx="50%" cy="50%" r="75%">
               <stop offset="0%" stopColor="#0f172a" />
               <stop offset="100%" stopColor="#020617" />
             </radialGradient>
 
-            {/* Glowing Orbs */}
             <filter id="planetGlow" x="-50%" y="-50%" width="200%" height="200%">
               <feGaussianBlur stdDeviation="8" result="blur" />
               <feComposite in="SourceGraphic" in2="blur" operator="over" />
@@ -159,7 +217,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
             </filter>
           </defs>
 
-          {/* Space Deep Backdrop */}
+          {/* Space Backdrop */}
           <rect width="760" height="480" fill="url(#spaceBg)" />
 
           {/* Planets with Gravity Fields */}
@@ -237,32 +295,53 @@ export default function SpaceGravityGame({ soundEnabled }) {
             </text>
           </g>
 
-          {/* Aim Vector Arrow (when idle) */}
+          {/* Interactive Aiming Vector Line & Drag Handle */}
           {!isSimulating && (
             <g>
+              {/* Slingshot Vector Arrow */}
               <line
                 x1={ship.x}
                 y1={ship.y}
                 x2={aimVectorEnd.x}
                 y2={aimVectorEnd.y}
                 stroke="#fbbf24"
-                strokeWidth="3"
-                strokeDasharray="5 5"
+                strokeWidth="3.5"
+                strokeDasharray="6 4"
               />
-              <circle
-                cx={aimVectorEnd.x}
-                cy={aimVectorEnd.y}
-                r="6"
-                fill="#fbbf24"
-              />
+
+              {/* Interactive Handle Ring */}
+              <g
+                onPointerDown={handlePointerDown}
+                style={{ cursor: isDraggingAim ? 'grabbing' : 'grab' }}
+              >
+                <circle
+                  cx={aimVectorEnd.x}
+                  cy={aimVectorEnd.y}
+                  r="20"
+                  fill="rgba(251, 191, 36, 0.25)"
+                  className="handle-pulse"
+                />
+                <circle
+                  cx={aimVectorEnd.x}
+                  cy={aimVectorEnd.y}
+                  r="10"
+                  fill="#fbbf24"
+                  stroke="#ffffff"
+                  strokeWidth="3"
+                />
+              </g>
             </g>
           )}
 
-          {/* Spaceship */}
-          <g transform={`translate(${ship.x}, ${ship.y})`}>
-            <circle r="20" fill="rgba(99, 102, 241, 0.4)" />
-            <circle r="14" fill="#6366f1" stroke="#ffffff" strokeWidth="2.5" />
-            <text textAnchor="middle" dy="5" fontSize="14">
+          {/* Spaceship Handle (Also Draggable!) */}
+          <g
+            transform={`translate(${ship.x}, ${ship.y})`}
+            onPointerDown={handlePointerDown}
+            style={{ cursor: isDraggingAim ? 'grabbing' : 'grab' }}
+          >
+            <circle r="22" fill="rgba(99, 102, 241, 0.3)" />
+            <circle r="15" fill="#6366f1" stroke="#ffffff" strokeWidth="2.5" />
+            <text textAnchor="middle" dy="5" fontSize="14" style={{ pointerEvents: 'none' }}>
               🚀
             </text>
           </g>
@@ -279,7 +358,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
             />
           )}
 
-          {/* Projectile Flying Orb */}
+          {/* Flying Projectile Orb */}
           {projectilePos && (
             <circle
               cx={projectilePos.x}
@@ -306,7 +385,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
         <div className="side-card">
           <div className="card-title">
             <Compass size={20} color="var(--color-accent-gold)" />
-            <span>Launch Controls (Angle & Magnitude)</span>
+            <span>Launch Controls (Angle & Power)</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -469,7 +548,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
                 lineHeight: '1.4',
               }}
             >
-              💡 <strong>Physics Math Tip:</strong> Massive planets exert stronger gravity pulls. Use planet gravity wells to bend your slingshot curve around obstacles!
+              💡 <strong>Mouse Controls:</strong> Click & drag directly on the yellow aim handle knob or spaceship to rotate angle and stretch launch power!
             </div>
           </div>
         </div>

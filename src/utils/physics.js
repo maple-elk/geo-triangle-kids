@@ -89,18 +89,21 @@ export function calculateGravitationalAccel(x, y, planets) {
   return { ax, ay };
 }
 
-// Step physics forward by dt seconds
+// Step physics forward by dt seconds (tuned for cinematic, readable speed)
 export function updateProjectilePhysics(pos, vel, planets, dt = 0.016) {
   const { ax, ay } = calculateGravitationalAccel(pos.x, pos.y, planets);
 
+  // Speed factor 0.55 slows simulation down for kids to easily track gravity curves
+  const SPEED_FACTOR = 0.55;
+
   const nVel = {
-    x: vel.x + ax * dt * 60,
-    y: vel.y + ay * dt * 60,
+    x: vel.x + ax * dt * 35 * SPEED_FACTOR,
+    y: vel.y + ay * dt * 35 * SPEED_FACTOR,
   };
 
   const nPos = {
-    x: pos.x + nVel.x * dt * 60,
-    y: pos.y + nVel.y * dt * 60,
+    x: pos.x + nVel.x * dt * 35 * SPEED_FACTOR,
+    y: pos.y + nVel.y * dt * 35 * SPEED_FACTOR,
   };
 
   return { pos: nPos, vel: nVel, accel: { ax, ay } };
