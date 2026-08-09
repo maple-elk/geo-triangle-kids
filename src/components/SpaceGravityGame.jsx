@@ -73,20 +73,21 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   const [score, setScore] = useState(0);
 
   // Dynamic Deep Space Camera Zoom State [minX, minY, width, height]
-  const [viewBox, setViewBox] = useState([0, 0, 960, 600]);
-  const currentViewBoxRef = useRef([0, 0, 960, 600]);
-  const targetViewBoxRef = useRef([0, 0, 960, 600]);
+  const DEFAULT_VIEWBOX = [-100, -60, 1160, 725];
+  const [viewBox, setViewBox] = useState(DEFAULT_VIEWBOX);
+  const currentViewBoxRef = useRef(DEFAULT_VIEWBOX);
+  const targetViewBoxRef = useRef(DEFAULT_VIEWBOX);
 
   // Set target viewBox bounds to enclose board and active projectile (clamped to max space arena)
   const updateCameraTarget = useCallback((activePos) => {
     if (!activePos) {
-      targetViewBoxRef.current = [0, 0, 960, 600];
+      targetViewBoxRef.current = DEFAULT_VIEWBOX;
     } else {
       const margin = 180;
-      let minX = Math.min(0, activePos.x - margin);
-      let maxX = Math.max(960, activePos.x + margin);
-      let minY = Math.min(0, activePos.y - margin);
-      let maxY = Math.max(600, activePos.y + margin);
+      let minX = Math.min(-100, activePos.x - margin);
+      let maxX = Math.max(1060, activePos.x + margin);
+      let minY = Math.min(-60, activePos.y - margin);
+      let maxY = Math.max(660, activePos.y + margin);
 
       let w = maxX - minX;
       let h = maxY - minY;
@@ -213,9 +214,9 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       setTurnOwner('player');
       setRoundCompleted(false);
       setShowEndSummary(false);
-      targetViewBoxRef.current = [0, 0, 960, 600];
-      currentViewBoxRef.current = [0, 0, 960, 600];
-      setViewBox([0, 0, 960, 600]);
+      targetViewBoxRef.current = DEFAULT_VIEWBOX;
+      currentViewBoxRef.current = DEFAULT_VIEWBOX;
+      setViewBox(DEFAULT_VIEWBOX);
       playSnapSound(soundEnabled);
     },
     [
