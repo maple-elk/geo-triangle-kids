@@ -9,12 +9,12 @@ import {
   DEFAULT_G,
 } from '../utils/physics';
 import { playPopSound, playSnapSound, playVictorySound } from '../utils/audio';
-import { Play, RotateCcw, Compass, Zap, Eye, EyeOff, Sliders, Activity } from 'lucide-react';
+import { Play, RotateCcw, Compass, Zap, Eye, EyeOff, Sliders, Activity, ChevronUp, ChevronDown } from 'lucide-react';
 
-export default function SpaceGravityGame({ soundEnabled }) {
+export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   const svgRef = useRef(null);
 
-  // Universe Customization Settings
+  // Customization Settings
   const [planetCount, setPlanetCount] = useState('auto'); // 'auto' | 1..5
   const [gravityG, setGravityG] = useState(DEFAULT_G); // 100..1000
   const [massMult, setMassMult] = useState(1.0); // 0.5..2.0
@@ -33,6 +33,9 @@ export default function SpaceGravityGame({ soundEnabled }) {
   const [showGravityGradients, setShowGravityGradients] = useState(true);
   const [showGravityVectors, setShowGravityVectors] = useState(true);
   const [showNetVector, setShowNetVector] = useState(true);
+
+  // Overlay HUD collapse states in Fullscreen
+  const [showSettingsOverlay, setShowSettingsOverlay] = useState(false);
 
   // Level & Physics State (Spacious 960x600 canvas)
   const [level, setLevel] = useState(() =>
@@ -190,7 +193,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
     velRef.current = initialVel;
     warpCooldownRef.current = 0;
 
-    // Reset booster flag
     boosters.forEach((b) => (b.boostedThisShot = false));
 
     setProjectilePos({ x: ship.x, y: ship.y });
@@ -246,7 +248,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
         ]);
       }
 
-      // Auto-generate new planets when target is achieved
       if (status === 'hit_target' && autoNextOnTarget) {
         autoNextTimerRef.current = setTimeout(() => {
           handleNewLevel();
@@ -402,7 +403,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
       });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative' }}>
       {/* Canvas Card */}
       <div className="canvas-card">
         <div className="canvas-header">
@@ -546,7 +547,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
           {/* 2. Optional Black Holes */}
           {blackHoles.map((bh) => (
             <g key={bh.id} transform={`translate(${bh.x}, ${bh.y})`}>
-              {/* Spinning Event Horizon Ring */}
               <circle
                 r={bh.eventRadius}
                 fill="rgba(249, 115, 22, 0.15)"
@@ -563,7 +563,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
                   repeatCount="indefinite"
                 />
               </circle>
-              {/* Singularity Void */}
               <circle r={bh.radius} fill="#000000" stroke="#f97316" strokeWidth="2.5" />
               <text y={bh.eventRadius + 15} textAnchor="middle" fill="#f97316" fontSize="10" fontWeight="700">
                 🕳️ Event Horizon
@@ -648,7 +647,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
           {/* 7. Optional Shield Bouncer Moon */}
           {shields.map((sh) => (
             <g key={sh.id}>
-              {/* Hexagonal Shield Ring */}
               <circle cx={sh.x} cy={sh.y} r={sh.shieldRadius} fill="rgba(56, 189, 248, 0.18)" stroke="#38bdf8" strokeWidth="2" strokeDasharray="5 3" />
               <circle cx={sh.x} cy={sh.y} r={sh.radius} fill="#64748b" stroke="#ffffff" strokeWidth="2" />
               <text x={sh.x} y={sh.y + sh.shieldRadius + 14} textAnchor="middle" fill="#38bdf8" fontSize="10" fontWeight="700">
@@ -724,7 +722,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
             </g>
           )}
 
-          {/* INDIVIDUAL PLANET GRAVITY PULL VECTORS (Color-Coded by Planet) */}
+          {/* INDIVIDUAL PLANET GRAVITY PULL VECTORS */}
           {showGravityVectors &&
             individualVectors.map((vec) => {
               const vecLen = Math.max(26, Math.min(130, vec.accelMag * 85));
@@ -898,261 +896,372 @@ export default function SpaceGravityGame({ soundEnabled }) {
             </text>
           </g>
         </svg>
+
+        {/* FULLSCREEN FLOATING OVERLAY HUDS */}
+        {isFullscreen && (
+          <>
+            {/* Floating Launch HUD (Bottom-Left) */}
+            <div className="overlay-hud overlay-hud-bottom-left">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <span style={{ fontFamily: 'Fredoka', color: '#ffffff', fontSize: '1.05rem' }}>🕹️ Slingshot Controls</span>
+                <span style={{ fontSize: '0.8rem', color: '#fbbf24' }}>Score: {score} pts</span>
+              </div>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.75rem', color: '#cbd5e1', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Angle (θ): {angle}°</span>
+                    <span>Power: {power}</span>
+                  </div>
+                </div>
+                <button className="btn-primary" onClick={handleLaunch} disabled={isSimulating} style={{ padding: '8px 16px', fontSize: '0.9rem' }}>
+                  <Play size={16} />
+                  <span>Launch [Space]</span>
+                </button>
+                <button className="btn-icon" onClick={() => handleNewLevel()} style={{ padding: '8px' }}>
+                  <RotateCcw size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Floating Universe Settings Toggle (Bottom-Right) */}
+            <div className="overlay-hud overlay-hud-bottom-right">
+              <div
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                onClick={() => setShowSettingsOverlay((v) => !v)}
+              >
+                <span style={{ fontFamily: 'Fredoka', color: '#ffffff', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Sliders size={16} /> Universe Config
+                </span>
+                {showSettingsOverlay ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+              </div>
+
+              {showSettingsOverlay && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#cbd5e1' }}>
+                    <span>Sim Speed ({simSpeedScale.toFixed(1)}x)</span>
+                    <input type="range" min="0.2" max="2.0" step="0.1" value={simSpeedScale} onChange={(e) => setSimSpeedScale(Number(e.target.value))} style={{ width: '120px' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', fontSize: '0.75rem', color: '#e2e8f0', flexWrap: 'wrap' }}>
+                    <label><input type="checkbox" checked={enableBlackHoles} onChange={(e) => { setEnableBlackHoles(e.target.checked); handleNewLevel({ ...level, enableBlackHoles: e.target.checked }); }} /> 🕳️ Black Hole</label>
+                    <label><input type="checkbox" checked={enableAsteroids} onChange={(e) => { setEnableAsteroids(e.target.checked); handleNewLevel({ ...level, enableAsteroids: e.target.checked }); }} /> 🪨 Asteroids</label>
+                    <label><input type="checkbox" checked={enableWormholes} onChange={(e) => { setEnableWormholes(e.target.checked); handleNewLevel({ ...level, enableWormholes: e.target.checked }); }} /> 🌀 Wormholes</label>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Control Panel & Physics Customization Grid */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '20px',
-        }}
-      >
-        {/* Launch Math Controls */}
-        <div className="side-card">
-          <div className="card-title">
-            <Compass size={20} color="var(--color-accent-gold)" />
-            <span>Launch Controls</span>
-          </div>
+      {/* STANDARD STACKED SIDEBAR CARDS (Only when NOT in Fullscreen) */}
+      {!isFullscreen && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '20px',
+          }}
+        >
+          {/* Launch Math Controls */}
+          <div className="side-card">
+            <div className="card-title">
+              <Compass size={20} color="var(--color-accent-gold)" />
+              <span>Launch Controls</span>
+            </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  marginBottom: '6px',
-                  fontWeight: '600',
-                }}
-              >
-                <span>Launch Angle (θ) [◀ ▶]</span>
-                <span style={{ color: 'var(--color-corner-a)' }}>{angle}°</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginBottom: '6px',
+                    fontWeight: '600',
+                  }}
+                >
+                  <span>Launch Angle (θ) [◀ ▶]</span>
+                  <span style={{ color: 'var(--color-corner-a)' }}>{angle}°</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="360"
+                  value={angle}
+                  disabled={isSimulating}
+                  onChange={(e) => setAngle(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: 'var(--color-corner-a)' }}
+                />
               </div>
-              <input
-                type="range"
-                min="0"
-                max="360"
-                value={angle}
-                disabled={isSimulating}
-                onChange={(e) => setAngle(Number(e.target.value))}
-                style={{ width: '100%', accentColor: 'var(--color-corner-a)' }}
-              />
-            </div>
 
-            <div>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  marginBottom: '6px',
-                  fontWeight: '600',
-                }}
-              >
-                <span>Launch Power (|v|) [▲ ▼]</span>
-                <span style={{ color: 'var(--color-corner-c)' }}>
-                  {power} Speed
-                </span>
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginBottom: '6px',
+                    fontWeight: '600',
+                  }}
+                >
+                  <span>Launch Power (|v|) [▲ ▼]</span>
+                  <span style={{ color: 'var(--color-corner-c)' }}>
+                    {power} Speed
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="10"
+                  max="100"
+                  value={power}
+                  disabled={isSimulating}
+                  onChange={(e) => setPower(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: 'var(--color-corner-c)' }}
+                />
               </div>
-              <input
-                type="range"
-                min="10"
-                max="100"
-                value={power}
-                disabled={isSimulating}
-                onChange={(e) => setPower(Number(e.target.value))}
-                style={{ width: '100%', accentColor: 'var(--color-corner-c)' }}
-              />
-            </div>
 
-            <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-              <button
-                className="btn-primary"
-                style={{ flex: 1 }}
-                onClick={handleLaunch}
-                disabled={isSimulating}
-              >
-                <Play size={18} />
-                <span>Launch! [Space]</span>
-              </button>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                <button
+                  className="btn-primary"
+                  style={{ flex: 1 }}
+                  onClick={handleLaunch}
+                  disabled={isSimulating}
+                >
+                  <Play size={18} />
+                  <span>Launch! [Space]</span>
+                </button>
 
-              <button
-                className="btn-icon"
-                onClick={() => handleNewLevel()}
-                title="Generate Random Planet System"
-              >
-                <RotateCcw size={18} />
-                <span>New Orbit</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Space Objects Toggle Panel (DEFAULTED TO OFF) */}
-        <div className="side-card">
-          <div className="card-title">
-            <span>🌌</span>
-            <span>Optional Space Objects (Defaults: OFF)</span>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={enableBlackHoles}
-                onChange={(e) => {
-                  setEnableBlackHoles(e.target.checked);
-                  handleNewLevel({ ...level, enableBlackHoles: e.target.checked, enableAsteroids, enableWormholes, enablePulsars, enableBoosters, enableShields });
-                }}
-                style={{ width: '16px', height: '16px', accentColor: '#f97316' }}
-              />
-              <span>🕳️ Black Hole</span>
-            </label>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={enableAsteroids}
-                onChange={(e) => {
-                  setEnableAsteroids(e.target.checked);
-                  handleNewLevel({ ...level, enableBlackHoles, enableAsteroids: e.target.checked, enableWormholes, enablePulsars, enableBoosters, enableShields });
-                }}
-                style={{ width: '16px', height: '16px', accentColor: '#f59e0b' }}
-              />
-              <span>🪨 Asteroid Drag Cloud</span>
-            </label>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={enableWormholes}
-                onChange={(e) => {
-                  setEnableWormholes(e.target.checked);
-                  handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes: e.target.checked, enablePulsars, enableBoosters, enableShields });
-                }}
-                style={{ width: '16px', height: '16px', accentColor: '#a855f7' }}
-              />
-              <span>🌀 Wormhole Portals</span>
-            </label>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={enablePulsars}
-                onChange={(e) => {
-                  setEnablePulsars(e.target.checked);
-                  handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars: e.target.checked, enableBoosters, enableShields });
-                }}
-                style={{ width: '16px', height: '16px', accentColor: '#38bdf8' }}
-              />
-              <span>⚡ Repulsive Pulsar</span>
-            </label>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={enableBoosters}
-                onChange={(e) => {
-                  setEnableBoosters(e.target.checked);
-                  handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableBoosters: e.target.checked, enableShields });
-                }}
-                style={{ width: '16px', height: '16px', accentColor: '#10b981' }}
-              />
-              <span>🚀 Speed Booster Gate</span>
-            </label>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={enableShields}
-                onChange={(e) => {
-                  setEnableShields(e.target.checked);
-                  handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableBoosters, enableShields: e.target.checked });
-                }}
-                style={{ width: '16px', height: '16px', accentColor: '#64748b' }}
-              />
-              <span>🛡️ Shield Deflector Moon</span>
-            </label>
-          </div>
-        </div>
-
-        {/* Physics & Overlay Controls */}
-        <div className="side-card">
-          <div className="card-title">
-            <Sliders size={20} color="var(--color-accent-purple)" />
-            <span>Universe & Speed Controls</span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {/* Simulation Speed Slider */}
-            <div>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  marginBottom: '4px',
-                  fontSize: '0.85rem',
-                  fontWeight: '600',
-                }}
-              >
-                <span>Simulation Flight Speed</span>
-                <span style={{ color: '#4ade80' }}>{simSpeedScale.toFixed(1)}x</span>
+                <button
+                  className="btn-icon"
+                  onClick={() => handleNewLevel()}
+                  title="Generate Random Planet System"
+                >
+                  <RotateCcw size={18} />
+                  <span>New Orbit</span>
+                </button>
               </div>
-              <input
-                type="range"
-                min="0.2"
-                max="2.0"
-                step="0.1"
-                value={simSpeedScale}
-                onChange={(e) => setSimSpeedScale(Number(e.target.value))}
-                style={{ width: '100%', accentColor: '#4ade80' }}
-              />
+            </div>
+          </div>
+
+          {/* Optional Space Objects Toggle Panel */}
+          <div className="side-card">
+            <div className="card-title">
+              <span>🌌</span>
+              <span>Optional Space Objects (Defaults: OFF)</span>
             </div>
 
-            {/* Visual Overlay Toggles */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#e2e8f0', cursor: 'pointer' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
-                  checked={showGravityVectors}
-                  onChange={(e) => setShowGravityVectors(e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: '#ec4899' }}
+                  checked={enableBlackHoles}
+                  onChange={(e) => {
+                    setEnableBlackHoles(e.target.checked);
+                    handleNewLevel({ ...level, enableBlackHoles: e.target.checked, enableAsteroids, enableWormholes, enablePulsars, enableBoosters, enableShields });
+                  }}
+                  style={{ width: '16px', height: '16px', accentColor: '#f97316' }}
                 />
-                <span>Show Individual Planet Gravity Vectors (F1, F2...) 🪐</span>
+                <span>🕳️ Black Hole</span>
               </label>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#e2e8f0', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
-                  checked={showNetVector}
-                  onChange={(e) => setShowNetVector(e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: '#ffffff' }}
+                  checked={enableAsteroids}
+                  onChange={(e) => {
+                    setEnableAsteroids(e.target.checked);
+                    handleNewLevel({ ...level, enableBlackHoles, enableAsteroids: e.target.checked, enableWormholes, enablePulsars, enableBoosters, enableShields });
+                  }}
+                  style={{ width: '16px', height: '16px', accentColor: '#f59e0b' }}
                 />
-                <span>Show Combined Net Gravity Vector (F_net) ⚡</span>
+                <span>🪨 Asteroid Drag Cloud</span>
               </label>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#e2e8f0', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
-                  checked={showGravityGradients}
-                  onChange={(e) => setShowGravityGradients(e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: '#8b5cf6' }}
+                  checked={enableWormholes}
+                  onChange={(e) => {
+                    setEnableWormholes(e.target.checked);
+                    handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes: e.target.checked, enablePulsars, enableBoosters, enableShields });
+                  }}
+                  style={{ width: '16px', height: '16px', accentColor: '#a855f7' }}
                 />
-                <span>Show Planet Gravity Field Gradients 🌈</span>
+                <span>🌀 Wormhole Portals</span>
               </label>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#e2e8f0', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
-                  checked={autoNextOnTarget}
-                  onChange={(e) => setAutoNextOnTarget(e.target.checked)}
+                  checked={enablePulsars}
+                  onChange={(e) => {
+                    setEnablePulsars(e.target.checked);
+                    handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars: e.target.checked, enableBoosters, enableShields });
+                  }}
+                  style={{ width: '16px', height: '16px', accentColor: '#38bdf8' }}
+                />
+                <span>⚡ Repulsive Pulsar</span>
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={enableBoosters}
+                  onChange={(e) => {
+                    setEnableBoosters(e.target.checked);
+                    handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableBoosters: e.target.checked, enableShields });
+                  }}
                   style={{ width: '16px', height: '16px', accentColor: '#10b981' }}
                 />
-                <span>Auto-generate new planets on Target Hit 🎯</span>
+                <span>🚀 Speed Booster Gate</span>
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#e2e8f0', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={enableShields}
+                  onChange={(e) => {
+                    setEnableShields(e.target.checked);
+                    handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableBoosters, enableShields: e.target.checked });
+                  }}
+                  style={{ width: '16px', height: '16px', accentColor: '#64748b' }}
+                />
+                <span>🛡️ Shield Deflector Moon</span>
               </label>
             </div>
           </div>
+
+          {/* Physics & Overlay Controls */}
+          <div className="side-card">
+            <div className="card-title">
+              <Sliders size={20} color="var(--color-accent-purple)" />
+              <span>Universe & Speed Controls</span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginBottom: '4px',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                  }}
+                >
+                  <span>Simulation Flight Speed</span>
+                  <span style={{ color: '#4ade80' }}>{simSpeedScale.toFixed(1)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.2"
+                  max="2.0"
+                  step="0.1"
+                  value={simSpeedScale}
+                  onChange={(e) => setSimSpeedScale(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#4ade80' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#e2e8f0', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={showGravityVectors}
+                    onChange={(e) => setShowGravityVectors(e.target.checked)}
+                    style={{ width: '16px', height: '16px', accentColor: '#ec4899' }}
+                  />
+                  <span>Show Individual Planet Gravity Vectors (F1, F2...) 🪐</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#e2e8f0', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={showNetVector}
+                    onChange={(e) => setShowNetVector(e.target.checked)}
+                    style={{ width: '16px', height: '16px', accentColor: '#ffffff' }}
+                  />
+                  <span>Show Combined Net Gravity Vector (F_net) ⚡</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#e2e8f0', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={showGravityGradients}
+                    onChange={(e) => setShowGravityGradients(e.target.checked)}
+                    style={{ width: '16px', height: '16px', accentColor: '#8b5cf6' }}
+                  />
+                  <span>Show Planet Gravity Field Gradients 🌈</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#e2e8f0', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={autoNextOnTarget}
+                    onChange={(e) => setAutoNextOnTarget(e.target.checked)}
+                    style={{ width: '16px', height: '16px', accentColor: '#10b981' }}
+                  />
+                  <span>Auto-generate new planets on Target Hit 🎯</span>
+                </label>
+              </div>
+
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginBottom: '4px',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                  }}
+                >
+                  <span>Planet Count</span>
+                  <span style={{ color: '#c7d2fe' }}>
+                    {planetCount === 'auto' ? 'Random (2-3)' : `${planetCount} Planets`}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {['auto', 1, 2, 3, 4, 5].map((cnt) => (
+                    <button
+                      key={cnt}
+                      className={`preset-btn ${planetCount === cnt ? 'active' : ''}`}
+                      style={{ flex: 1, padding: '6px 4px', fontSize: '0.78rem' }}
+                      onClick={() => {
+                        setPlanetCount(cnt);
+                        handleNewLevel({ planetCount: cnt, massMult });
+                      }}
+                    >
+                      {cnt === 'auto' ? 'Auto' : `${cnt}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginBottom: '4px',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                  }}
+                >
+                  <span>Gravity Constant (G)</span>
+                  <span style={{ color: '#38bdf8' }}>{gravityG}</span>
+                </div>
+                <input
+                  type="range"
+                  min="100"
+                  max="1000"
+                  step="50"
+                  value={gravityG}
+                  onChange={(e) => setGravityG(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#38bdf8' }}
+                />
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

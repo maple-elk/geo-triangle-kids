@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, VolumeX, Grid, Ruler, HelpCircle } from 'lucide-react';
+import { Volume2, VolumeX, Grid, Ruler, HelpCircle, Maximize, Minimize } from 'lucide-react';
 
 export default function Navbar({
   activeTab,
@@ -10,6 +10,8 @@ export default function Navbar({
   onToggleSnapGrid,
   showSideLengths,
   onToggleSideLengths,
+  isFullscreen,
+  onToggleFullscreen,
   onOpenHelp,
 }) {
   return (
@@ -60,6 +62,15 @@ export default function Navbar({
             </button>
           </>
         )}
+
+        <button
+          className={`btn-icon ${isFullscreen ? 'active' : ''}`}
+          onClick={onToggleFullscreen}
+          title={isFullscreen ? 'Exit Fullscreen Mode' : 'Enter Single-Screen Fullscreen Mode'}
+        >
+          {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+          <span>{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
+        </button>
 
         <button
           className={`btn-icon ${soundEnabled ? 'active' : ''}`}

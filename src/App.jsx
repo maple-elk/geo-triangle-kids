@@ -39,6 +39,31 @@ export default function App() {
   const [showSideLengths, setShowSideLengths] = useState(true);
   const [showHelpModal, setShowHelpModal] = useState(false);
 
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Fullscreen API toggle handler
+  const handleToggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullscreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+      setIsFullscreen(false);
+    }
+  }, []);
+
+  // Listen to native browser fullscreen change events (e.g. user hits ESC key)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
   // Sync state with URL hash changes (deep links & browser Back/Forward buttons)
   useEffect(() => {
     const handleUrlChange = () => {
@@ -89,7 +114,7 @@ export default function App() {
   };
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${isFullscreen ? 'is-fullscreen' : ''}`}>
       {/* Header Bar with Module Tabs */}
       <Navbar
         activeTab={activeTab}
@@ -103,6 +128,8 @@ export default function App() {
         }}
         showSideLengths={showSideLengths}
         onToggleSideLengths={() => setShowSideLengths((v) => !v)}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={handleToggleFullscreen}
         onOpenHelp={() => setShowHelpModal(true)}
       />
 
@@ -137,8 +164,8 @@ export default function App() {
 
       {/* Module 2: Space Gravity Slingshot */}
       {activeTab === 'gravity' && (
-        <main>
-          <SpaceGravityGame soundEnabled={soundEnabled} />
+        <main style={isFullscreen ? { flex: 1, height: 'calc(100vh - 90px)' } : {}}>
+          <SpaceGravityGame soundEnabled={soundEnabled} isFullscreen={isFullscreen} />
         </main>
       )}
 
