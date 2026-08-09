@@ -3,7 +3,6 @@ import { ExternalLink, Rocket, Sparkles, Compass, Shield } from 'lucide-react';
 
 export default function SlingshotLauncherCard() {
   const liveAppUrl = 'https://maple-elk.github.io/space-slingshot/';
-  const localAppUrl = 'http://localhost:5175/';
 
   return (
     <div
@@ -66,8 +65,6 @@ export default function SlingshotLauncherCard() {
       <div
         style={{
           display: 'flex',
-          flexWrap: 'wrap',
-          gap: '12px',
           justifyContent: 'center',
           width: '100%',
         }}
@@ -78,30 +75,14 @@ export default function SlingshotLauncherCard() {
           rel="noopener noreferrer"
           className="btn-primary"
           style={{
-            padding: '14px 28px',
+            padding: '14px 32px',
             fontSize: '1.05rem',
             textDecoration: 'none',
             background: 'linear-gradient(135deg, #38bdf8, #0284c7)',
             boxShadow: '0 6px 20px rgba(56, 189, 248, 0.4)',
           }}
         >
-          <span>Launch Live App</span>
-          <ExternalLink size={18} />
-        </a>
-
-        <a
-          href={localAppUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn-icon"
-          style={{
-            padding: '14px 24px',
-            fontSize: '1rem',
-            textDecoration: 'none',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-          }}
-        >
-          <span>Open Local Dev (Port 5175)</span>
+          <span>Launch Space Slingshot App</span>
           <ExternalLink size={18} />
         </a>
       </div>
