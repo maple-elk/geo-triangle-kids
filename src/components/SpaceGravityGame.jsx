@@ -4,6 +4,7 @@ import {
   generateRandomLevel,
   updateProjectilePhysics,
   calculateGravitationalAccel,
+  calculateIndividualGravitationalAccels,
   checkCollisions,
   DEFAULT_G,
 } from '../utils/physics';
@@ -23,6 +24,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
   // Visual Overlays
   const [showGravityGradients, setShowGravityGradients] = useState(true);
   const [showGravityVectors, setShowGravityVectors] = useState(true);
+  const [showNetVector, setShowNetVector] = useState(true);
 
   // Level & Physics State (Spacious 960x600 canvas)
   const [level, setLevel] = useState(() =>
@@ -224,7 +226,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
       setProjectileVel(result.vel);
       setProjectileAccel(result.accel);
 
-      // Keep ENTIRE trajectory line for long travel shots
       localTrail.push({ x: result.pos.x, y: result.pos.y });
       setTrail([...localTrail]);
 
@@ -251,7 +252,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
         return;
       }
 
-      // Max steps safeguard (3500 steps ≈ 60 seconds of long orbit travel)
       if (localTrail.length > 3500) {
         finalizeShot('out', localTrail);
         return;
@@ -291,33 +291,39 @@ export default function SpaceGravityGame({ soundEnabled }) {
       )
     : angle;
 
-  // Calculate live net gravity pull vector on projectile
+  // Individual planet gravity pull vectors
+  const individualVectors = calculateIndividualGravitationalAccels(
+    currentPos.x,
+    currentPos.y,
+    planets,
+    gravityG
+  );
+
+  // Net total gravity pull vector
   const netAccel = isSimulating
     ? projectileAccel
-    : calculateGravitationalAccel(ship.x, ship.y, planets, gravityG);
+    : calculateGravitationalAccel(currentPos.x, currentPos.y, planets, gravityG);
 
   const netAccelMag = Math.hypot(netAccel.ax, netAccel.ay);
   const netAccelAngle = Math.atan2(netAccel.ay, netAccel.ax);
-  const gravityVectorLength = Math.max(30, Math.min(130, netAccelMag * 85));
-  const gravityVectorEnd = {
-    x: currentPos.x + gravityVectorLength * Math.cos(netAccelAngle),
-    y: currentPos.y + gravityVectorLength * Math.sin(netAccelAngle),
+  const netVectorLength = Math.max(30, Math.min(130, netAccelMag * 85));
+  const netVectorEnd = {
+    x: currentPos.x + netVectorLength * Math.cos(netAccelAngle),
+    y: currentPos.y + netVectorLength * Math.sin(netAccelAngle),
   };
 
-  // Arrowhead coordinates for Gravity Pull Vector
-  const arrowHeadAngle1 = netAccelAngle + Math.PI - 0.4;
-  const arrowHeadAngle2 = netAccelAngle + Math.PI + 0.4;
-  const arrowHeadLen = 10;
-  const p1 = {
-    x: gravityVectorEnd.x + arrowHeadLen * Math.cos(arrowHeadAngle1),
-    y: gravityVectorEnd.y + arrowHeadLen * Math.sin(arrowHeadAngle1),
+  const netHeadAngle1 = netAccelAngle + Math.PI - 0.4;
+  const netHeadAngle2 = netAccelAngle + Math.PI + 0.4;
+  const netP1 = {
+    x: netVectorEnd.x + 10 * Math.cos(netHeadAngle1),
+    y: netVectorEnd.y + 10 * Math.sin(netHeadAngle1),
   };
-  const p2 = {
-    x: gravityVectorEnd.x + arrowHeadLen * Math.cos(arrowHeadAngle2),
-    y: gravityVectorEnd.y + arrowHeadLen * Math.sin(arrowHeadAngle2),
+  const netP2 = {
+    x: netVectorEnd.x + 10 * Math.cos(netHeadAngle2),
+    y: netVectorEnd.y + 10 * Math.sin(netHeadAngle2),
   };
 
-  // Compute trails to display (either all or last 3 with fading opacities)
+  // Compute trails to display
   const displayedPastTrails = showAllPastTrails
     ? pastTrails.map((t) => ({ ...t, opacity: 0.45 }))
     : pastTrails.slice(-3).map((t, idx, arr) => {
@@ -375,7 +381,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
               <stop offset="100%" stopColor="#020617" />
             </radialGradient>
 
-            {/* Dynamic Planet Gravity Field Radial Gradients */}
+            {/* Planet Radial Gradients */}
             {planets.map((planet) => (
               <radialGradient key={planet.id} id={`gravGrad_${planet.id}`}>
                 <stop offset="0%" stopColor={planet.fill} stopOpacity="0.45" />
@@ -397,7 +403,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
           {/* Space Backdrop */}
           <rect width="960" height="600" fill="url(#spaceBg)" />
 
-          {/* Optional Planet Gravity Field Soft Colored Gradients */}
+          {/* Optional Planet Gravity Field Gradients */}
           {showGravityGradients &&
             planets.map((planet) => (
               <circle
@@ -502,7 +508,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
             </text>
           </g>
 
-          {/* Interactive Aiming Vector Line & Drag Handle */}
+          {/* Aiming Vector Line & Drag Handle */}
           {!isSimulating && (
             <g>
               <line
@@ -538,42 +544,104 @@ export default function SpaceGravityGame({ soundEnabled }) {
             </g>
           )}
 
-          {/* Net Gravity Force Vector Arrow on Projectile (Prominent & Scaled) */}
-          {showGravityVectors && (
+          {/* INDIVIDUAL PLANET GRAVITY PULL VECTORS (Color-Coded by Planet) */}
+          {showGravityVectors &&
+            individualVectors.map((vec) => {
+              const vecLen = Math.max(26, Math.min(130, vec.accelMag * 85));
+              const vecEnd = {
+                x: currentPos.x + vecLen * Math.cos(vec.angle),
+                y: currentPos.y + vecLen * Math.sin(vec.angle),
+              };
+
+              const hAngle1 = vec.angle + Math.PI - 0.4;
+              const hAngle2 = vec.angle + Math.PI + 0.4;
+              const hp1 = {
+                x: vecEnd.x + 9 * Math.cos(hAngle1),
+                y: vecEnd.y + 9 * Math.sin(hAngle1),
+              };
+              const hp2 = {
+                x: vecEnd.x + 9 * Math.cos(hAngle2),
+                y: vecEnd.y + 9 * Math.sin(hAngle2),
+              };
+
+              return (
+                <g key={`vec_${vec.planet.id}`} style={{ pointerEvents: 'none' }}>
+                  <line
+                    x1={currentPos.x}
+                    y1={currentPos.y}
+                    x2={vecEnd.x}
+                    y2={vecEnd.y}
+                    stroke={vec.planet.fill}
+                    strokeWidth="2.5"
+                    strokeDasharray="4 3"
+                    opacity="0.9"
+                  />
+                  <polygon
+                    points={`${vecEnd.x},${vecEnd.y} ${hp1.x},${hp1.y} ${hp2.x},${hp2.y}`}
+                    fill={vec.planet.fill}
+                    opacity="0.9"
+                  />
+                  <rect
+                    x={vecEnd.x + 4}
+                    y={vecEnd.y - 10}
+                    width="48"
+                    height="18"
+                    rx="4"
+                    fill="rgba(15, 23, 42, 0.85)"
+                    stroke={vec.planet.fill}
+                    strokeWidth="1"
+                  />
+                  <text
+                    x={vecEnd.x + 28}
+                    y={vecEnd.y + 2}
+                    textAnchor="middle"
+                    fill={vec.planet.fill}
+                    fontSize="10"
+                    fontWeight="700"
+                    fontFamily="Outfit"
+                  >
+                    F{vec.planet.id}: {vec.accelMag.toFixed(1)}
+                  </text>
+                </g>
+              );
+            })}
+
+          {/* COMBINED NET GRAVITY VECTOR (WHITE/CYAN HIGHLIGHT) */}
+          {showNetVector && netAccelMag > 0.05 && (
             <g style={{ pointerEvents: 'none' }}>
               <line
                 x1={currentPos.x}
                 y1={currentPos.y}
-                x2={gravityVectorEnd.x}
-                y2={gravityVectorEnd.y}
-                stroke="#38bdf8"
-                strokeWidth="3"
-                strokeDasharray="5 3"
+                x2={netVectorEnd.x}
+                y2={netVectorEnd.y}
+                stroke="#ffffff"
+                strokeWidth="3.5"
+                opacity="0.9"
               />
               <polygon
-                points={`${gravityVectorEnd.x},${gravityVectorEnd.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`}
-                fill="#38bdf8"
+                points={`${netVectorEnd.x},${netVectorEnd.y} ${netP1.x},${netP1.y} ${netP2.x},${netP2.y}`}
+                fill="#ffffff"
               />
               <rect
-                x={gravityVectorEnd.x + 6}
-                y={gravityVectorEnd.y - 12}
-                width="64"
+                x={netVectorEnd.x + 6}
+                y={netVectorEnd.y - 12}
+                width="68"
                 height="20"
                 rx="5"
-                fill="rgba(15, 23, 42, 0.85)"
-                stroke="#38bdf8"
-                strokeWidth="1"
+                fill="rgba(15, 23, 42, 0.9)"
+                stroke="#ffffff"
+                strokeWidth="1.5"
               />
               <text
-                x={gravityVectorEnd.x + 38}
-                y={gravityVectorEnd.y + 2}
+                x={netVectorEnd.x + 40}
+                y={netVectorEnd.y + 2}
                 textAnchor="middle"
-                fill="#38bdf8"
+                fill="#ffffff"
                 fontSize="11"
-                fontWeight="700"
+                fontWeight="800"
                 fontFamily="Outfit"
               >
-                Fg: {netAccelMag.toFixed(1)}
+                F_net: {netAccelMag.toFixed(1)}
               </text>
             </g>
           )}
@@ -762,9 +830,9 @@ export default function SpaceGravityGame({ soundEnabled }) {
             </div>
 
             <div className="sum-card" style={{ padding: '12px' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Gravity Pull (Fg)</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#38bdf8' }}>
-                {netAccelMag.toFixed(1)}
+              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Net Gravity Pull</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#ffffff' }}>
+                F_net: {netAccelMag.toFixed(1)}
               </div>
             </div>
 
@@ -824,11 +892,11 @@ export default function SpaceGravityGame({ soundEnabled }) {
               >
                 <input
                   type="checkbox"
-                  checked={showGravityGradients}
-                  onChange={(e) => setShowGravityGradients(e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: '#8b5cf6' }}
+                  checked={showGravityVectors}
+                  onChange={(e) => setShowGravityVectors(e.target.checked)}
+                  style={{ width: '16px', height: '16px', accentColor: '#ec4899' }}
                 />
-                <span>Show Planet Gravity Field Gradients 🌈</span>
+                <span>Show Individual Planet Gravity Vectors (F1, F2...) 🪐</span>
               </label>
 
               <label
@@ -843,11 +911,30 @@ export default function SpaceGravityGame({ soundEnabled }) {
               >
                 <input
                   type="checkbox"
-                  checked={showGravityVectors}
-                  onChange={(e) => setShowGravityVectors(e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: '#38bdf8' }}
+                  checked={showNetVector}
+                  onChange={(e) => setShowNetVector(e.target.checked)}
+                  style={{ width: '16px', height: '16px', accentColor: '#ffffff' }}
                 />
-                <span>Show Net Gravity Force Pull Vector (Fg) 🧲</span>
+                <span>Show Combined Net Gravity Vector (F_net) ⚡</span>
+              </label>
+
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '0.85rem',
+                  color: '#e2e8f0',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={showGravityGradients}
+                  onChange={(e) => setShowGravityGradients(e.target.checked)}
+                  style={{ width: '16px', height: '16px', accentColor: '#8b5cf6' }}
+                />
+                <span>Show Planet Gravity Field Gradients 🌈</span>
               </label>
 
               <label

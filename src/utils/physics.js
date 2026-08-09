@@ -90,7 +90,35 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
   return { ship, target, planets };
 }
 
-// Calculate gravitational acceleration at position (x, y) from all planets
+// Calculate individual gravitational acceleration vectors from each planet on (x, y)
+export function calculateIndividualGravitationalAccels(x, y, planets, gravityG = DEFAULT_G) {
+  return planets.map((p) => {
+    const dx = p.x - x;
+    const dy = p.y - y;
+    const distSq = dx * dx + dy * dy;
+    const dist = Math.sqrt(distSq);
+
+    if (dist < p.radius * 0.5) {
+      return { planet: p, ax: 0, ay: 0, accelMag: 0, angle: 0, dist };
+    }
+
+    const accelMag = (gravityG * p.mass) / Math.max(distSq, 400);
+    const angle = Math.atan2(dy, dx);
+    const ax = accelMag * (dx / dist);
+    const ay = accelMag * (dy / dist);
+
+    return {
+      planet: p,
+      ax,
+      ay,
+      accelMag,
+      angle,
+      dist,
+    };
+  });
+}
+
+// Calculate total net gravitational acceleration at position (x, y) from all planets
 export function calculateGravitationalAccel(x, y, planets, gravityG = DEFAULT_G) {
   let ax = 0;
   let ay = 0;
@@ -101,10 +129,8 @@ export function calculateGravitationalAccel(x, y, planets, gravityG = DEFAULT_G)
     const distSq = dx * dx + dy * dy;
     const dist = Math.sqrt(distSq);
 
-    // Prevent singularity near center
     if (dist < p.radius * 0.5) continue;
 
-    // Force = G * mass / distSq
     const accel = (gravityG * p.mass) / Math.max(distSq, 400);
 
     ax += accel * (dx / dist);
@@ -142,19 +168,16 @@ export function updateProjectilePhysics(
 
 // Check collisions: 'target', 'planet', 'out_of_bounds', or 'none'
 export function checkCollisions(pos, target, planets, width = 960, height = 600) {
-  // Check target hit
   if (Math.hypot(pos.x - target.x, pos.y - target.y) <= target.radius + 6) {
     return 'target';
   }
 
-  // Check planet hits
   for (const p of planets) {
     if (Math.hypot(pos.x - p.x, pos.y - p.y) <= p.radius + 5) {
       return 'planet';
     }
   }
 
-  // Check out of bounds (expanded padding to 650px for deep space long orbits)
   if (pos.x < -650 || pos.x > width + 650 || pos.y < -650 || pos.y > height + 650) {
     return 'out_of_bounds';
   }
