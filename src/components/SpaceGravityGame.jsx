@@ -545,11 +545,9 @@ export default function SpaceGravityGame({ soundEnabled }) {
 
           {/* 2. Optional Black Holes */}
           {blackHoles.map((bh) => (
-            <g key={bh.id}>
+            <g key={bh.id} transform={`translate(${bh.x}, ${bh.y})`}>
               {/* Spinning Event Horizon Ring */}
               <circle
-                cx={bh.x}
-                cy={bh.y}
                 r={bh.eventRadius}
                 fill="rgba(249, 115, 22, 0.15)"
                 stroke="#f97316"
@@ -566,8 +564,8 @@ export default function SpaceGravityGame({ soundEnabled }) {
                 />
               </circle>
               {/* Singularity Void */}
-              <circle cx={bh.x} cy={bh.y} r={bh.radius} fill="#000000" stroke="#f97316" strokeWidth="2.5" />
-              <text x={bh.x} y={bh.y + bh.eventRadius + 15} textAnchor="middle" fill="#f97316" fontSize="10" fontWeight="700">
+              <circle r={bh.radius} fill="#000000" stroke="#f97316" strokeWidth="2.5" />
+              <text y={bh.eventRadius + 15} textAnchor="middle" fill="#f97316" fontSize="10" fontWeight="700">
                 🕳️ Event Horizon
               </text>
             </g>
