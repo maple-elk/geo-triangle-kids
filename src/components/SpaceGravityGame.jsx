@@ -4,20 +4,31 @@ import {
   generateRandomLevel,
   updateProjectilePhysics,
   checkCollisions,
+  DEFAULT_G,
 } from '../utils/physics';
 import { playPopSound, playSnapSound, playVictorySound } from '../utils/audio';
-import { Play, RotateCcw, Compass, Zap, Eye, EyeOff } from 'lucide-react';
+import { Play, RotateCcw, Compass, Zap, Eye, EyeOff, Sliders, RefreshCw } from 'lucide-react';
 
 export default function SpaceGravityGame({ soundEnabled }) {
   const svgRef = useRef(null);
-  const [level, setLevel] = useState(() => generateRandomLevel(760, 480));
+
+  // Customization Settings
+  const [planetCount, setPlanetCount] = useState('auto'); // 'auto' | 1..5
+  const [gravityG, setGravityG] = useState(DEFAULT_G); // 100..1000
+  const [massMult, setMassMult] = useState(1.0); // 0.5..2.0
+  const [autoNextOnTarget, setAutoNextOnTarget] = useState(true);
+
+  // Level & Physics State
+  const [level, setLevel] = useState(() =>
+    generateRandomLevel(760, 480, { planetCount: 'auto', massMult: 1.0 })
+  );
   const [angle, setAngle] = useState(335); // Degrees (0 to 360)
   const [power, setPower] = useState(55); // Magnitude (10 to 100)
 
   const [isDraggingAim, setIsDraggingAim] = useState(false);
 
   // Trajectory trail history
-  const [pastTrails, setPastTrails] = useState([]); // List of past shot polylines
+  const [pastTrails, setPastTrails] = useState([]);
   const [showAllPastTrails, setShowAllPastTrails] = useState(false);
 
   // Simulation state
@@ -28,10 +39,26 @@ export default function SpaceGravityGame({ soundEnabled }) {
   const [score, setScore] = useState(0);
 
   const animRef = useRef(null);
+  const autoNextTimerRef = useRef(null);
   const velRef = useRef({ x: 0, y: 0 });
   const posRef = useRef({ x: 0, y: 0 });
 
   const { ship, target, planets } = level;
+
+  // Generate new level with current customization settings
+  const handleNewLevel = useCallback(
+    (customConfig) => {
+      const cfg = customConfig || { planetCount, massMult };
+      setLevel(generateRandomLevel(760, 480, cfg));
+      setIsSimulating(false);
+      setProjectilePos(null);
+      setTrail([]);
+      setPastTrails([]); // Clear past trails for fresh solar system
+      setGameStatus('idle');
+      playSnapSound(soundEnabled);
+    },
+    [planetCount, massMult, soundEnabled]
+  );
 
   // Convert screen pointer event to SVG space coordinates
   const getSVGCoordinates = (e) => {
@@ -43,7 +70,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
     return pt.matrixTransform(svg.getScreenCTM().inverse());
   };
 
-  // Update angle and power from pointer position WITHOUT audio noise on micro adjustments
+  // Update angle and power from pointer position
   const updateAimFromPointer = (e) => {
     if (isSimulating) return;
     const coords = getSVGCoordinates(e);
@@ -54,12 +81,10 @@ export default function SpaceGravityGame({ soundEnabled }) {
     const deg = Math.round(((rad * 180) / Math.PI + 360) % 360);
 
     const dist = Math.hypot(dx, dy);
-    // Map distance to power range (10 to 100)
     const newPower = Math.max(10, Math.min(100, Math.round(dist / 1.7)));
 
     setAngle(deg);
     setPower(newPower);
-    // NOTE: Removed playPopSound here to avoid audio noise during smooth trajectory aiming
   };
 
   const handlePointerDown = (e) => {
@@ -84,20 +109,13 @@ export default function SpaceGravityGame({ soundEnabled }) {
     }
   };
 
-  // Generate new level
-  const handleNewLevel = useCallback(() => {
-    setLevel(generateRandomLevel(760, 480));
-    setIsSimulating(false);
-    setProjectilePos(null);
-    setTrail([]);
-    setPastTrails([]); // Clear past trails for new orbit
-    setGameStatus('idle');
-    playSnapSound(soundEnabled);
-  }, [soundEnabled]);
-
   // Launch projectile
   const handleLaunch = useCallback(() => {
     if (isSimulating) return;
+
+    if (autoNextTimerRef.current) {
+      clearTimeout(autoNextTimerRef.current);
+    }
 
     playPopSound(soundEnabled);
 
@@ -129,24 +147,34 @@ export default function SpaceGravityGame({ soundEnabled }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleLaunch, isSimulating]);
 
-  // Save current trail to history when shot finishes
-  const finalizeShot = (status, finalTrail) => {
-    setIsSimulating(false);
-    setGameStatus(status);
+  // Save full completed shot trail to history
+  const finalizeShot = useCallback(
+    (status, finalTrail) => {
+      setIsSimulating(false);
+      setGameStatus(status);
 
-    if (finalTrail.length > 1) {
-      setPastTrails((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          points: finalTrail,
-          status,
-        },
-      ]);
-    }
-  };
+      if (finalTrail.length > 1) {
+        setPastTrails((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
+            points: finalTrail,
+            status,
+          },
+        ]);
+      }
 
-  // Physics Loop
+      // Auto-generate new planets when target is achieved
+      if (status === 'hit_target' && autoNextOnTarget) {
+        autoNextTimerRef.current = setTimeout(() => {
+          handleNewLevel();
+        }, 1400);
+      }
+    },
+    [autoNextOnTarget, handleNewLevel]
+  );
+
+  // Physics Animation Loop
   useEffect(() => {
     if (!isSimulating) return;
 
@@ -157,7 +185,8 @@ export default function SpaceGravityGame({ soundEnabled }) {
         posRef.current,
         velRef.current,
         planets,
-        0.016
+        0.016,
+        gravityG
       );
 
       posRef.current = result.pos;
@@ -165,8 +194,8 @@ export default function SpaceGravityGame({ soundEnabled }) {
 
       setProjectilePos(result.pos);
 
+      // Keep ENTIRE trajectory line for long travel shots
       localTrail.push({ x: result.pos.x, y: result.pos.y });
-      if (localTrail.length > 250) localTrail.shift();
       setTrail([...localTrail]);
 
       const collision = checkCollisions(result.pos, target, planets, 760, 480);
@@ -176,7 +205,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
         setScore((s) => s + 100);
         playVictorySound(soundEnabled);
         try {
-          confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 } });
+          confetti({ particleCount: 120, spread: 90, origin: { y: 0.6 } });
         } catch (e) {}
         return;
       }
@@ -192,6 +221,12 @@ export default function SpaceGravityGame({ soundEnabled }) {
         return;
       }
 
+      // Safeguard max steps to prevent infinite loop (1500 steps ≈ 25 seconds of flight)
+      if (localTrail.length > 1500) {
+        finalizeShot('out', localTrail);
+        return;
+      }
+
       animRef.current = requestAnimationFrame(loop);
     };
 
@@ -200,7 +235,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [isSimulating, planets, target, soundEnabled]);
+  }, [isSimulating, planets, target, gravityG, finalizeShot, soundEnabled]);
 
   // Aiming vector end point in SVG
   const rad = (angle * Math.PI) / 180;
@@ -212,13 +247,13 @@ export default function SpaceGravityGame({ soundEnabled }) {
 
   // Compute trails to display (either all or last 3 with fading opacities)
   const displayedPastTrails = showAllPastTrails
-    ? pastTrails.map((t) => ({ ...t, opacity: 0.35 }))
+    ? pastTrails.map((t) => ({ ...t, opacity: 0.45 }))
     : pastTrails.slice(-3).map((t, idx, arr) => {
         const distFromNewest = arr.length - 1 - idx;
-        const opacities = [0.6, 0.35, 0.15];
+        const opacities = [0.7, 0.4, 0.18];
         return {
           ...t,
-          opacity: opacities[distFromNewest] || 0.15,
+          opacity: opacities[distFromNewest] || 0.18,
         };
       });
 
@@ -249,7 +284,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
             )}
 
             <div className="help-tip">
-              <span>⌨️ Press [Space Bar] or click Launch! to shoot!</span>
+              <span>⌨️ Press [Space Bar] to shoot!</span>
             </div>
           </div>
         </div>
@@ -281,7 +316,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
           {/* Space Backdrop */}
           <rect width="760" height="480" fill="url(#spaceBg)" />
 
-          {/* Faded Historical Past Shot Trails */}
+          {/* Faded Historical Past Shot Trails (Complete lines) */}
           {displayedPastTrails.map((past) => (
             <polyline
               key={past.id}
@@ -422,7 +457,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
             </text>
           </g>
 
-          {/* Active Projectile Trail Line */}
+          {/* Active Projectile Complete Trail Line */}
           {trail.length > 1 && (
             <polyline
               points={trail.map((p) => `${p.x},${p.y}`).join(' ')}
@@ -449,7 +484,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
         </svg>
       </div>
 
-      {/* Control Panel Grid */}
+      {/* Control Panel & Physics Customization Grid */}
       <div
         style={{
           display: 'grid',
@@ -461,7 +496,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
         <div className="side-card">
           <div className="card-title">
             <Compass size={20} color="var(--color-accent-gold)" />
-            <span>Launch Controls (Angle & Power)</span>
+            <span>Launch Controls</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -526,7 +561,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
 
               <button
                 className="btn-icon"
-                onClick={handleNewLevel}
+                onClick={() => handleNewLevel()}
                 title="Generate Random Planet System"
               >
                 <RotateCcw size={18} />
@@ -536,11 +571,129 @@ export default function SpaceGravityGame({ soundEnabled }) {
           </div>
         </div>
 
+        {/* Physics & Universe Customization Settings */}
+        <div className="side-card">
+          <div className="card-title">
+            <Sliders size={20} color="var(--color-accent-purple)" />
+            <span>Universe & Randomness Controls</span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* Number of Planets Control */}
+            <div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  marginBottom: '6px',
+                  fontSize: '0.9rem',
+                  fontWeight: '600',
+                }}
+              >
+                <span>Planet Count</span>
+                <span style={{ color: '#c7d2fe' }}>
+                  {planetCount === 'auto' ? 'Random (2-3)' : `${planetCount} Planets`}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {['auto', 1, 2, 3, 4, 5].map((cnt) => (
+                  <button
+                    key={cnt}
+                    className={`preset-btn ${planetCount === cnt ? 'active' : ''}`}
+                    style={{ flex: 1, padding: '6px 4px', fontSize: '0.78rem' }}
+                    onClick={() => {
+                      setPlanetCount(cnt);
+                      handleNewLevel({ planetCount: cnt, massMult });
+                    }}
+                  >
+                    {cnt === 'auto' ? 'Auto' : `${cnt}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Gravity Strength G */}
+            <div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  marginBottom: '6px',
+                  fontSize: '0.9rem',
+                  fontWeight: '600',
+                }}
+              >
+                <span>Gravity Strength Constant (G)</span>
+                <span style={{ color: '#38bdf8' }}>{gravityG}</span>
+              </div>
+              <input
+                type="range"
+                min="100"
+                max="1000"
+                step="50"
+                value={gravityG}
+                onChange={(e) => setGravityG(Number(e.target.value))}
+                style={{ width: '100%', accentColor: '#38bdf8' }}
+              />
+            </div>
+
+            {/* Mass / Density Multiplier */}
+            <div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  marginBottom: '6px',
+                  fontSize: '0.9rem',
+                  fontWeight: '600',
+                }}
+              >
+                <span>Planet Density / Mass</span>
+                <span style={{ color: '#f59e0b' }}>{massMult}x</span>
+              </div>
+              <input
+                type="range"
+                min="0.5"
+                max="2.5"
+                step="0.25"
+                value={massMult}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setMassMult(val);
+                  handleNewLevel({ planetCount, massMult: val });
+                }}
+                style={{ width: '100%', accentColor: '#f59e0b' }}
+              />
+            </div>
+
+            {/* Auto Next Level Checkbox */}
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '0.85rem',
+                color: '#e2e8f0',
+                cursor: 'pointer',
+                marginTop: '4px',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={autoNextOnTarget}
+                onChange={(e) => setAutoNextOnTarget(e.target.checked)}
+                style={{ width: '16px', height: '16px', accentColor: '#10b981' }}
+              />
+              <span>Auto-generate new planets on Target Hit 🎯</span>
+            </label>
+          </div>
+        </div>
+
         {/* Physics & Game Status Panel */}
         <div className="side-card">
           <div className="card-title">
             <Zap size={20} color="#38bdf8" />
-            <span>Gravitational Slingshot Status</span>
+            <span>Slingshot Status</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -578,7 +731,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
                   fontWeight: '700',
                 }}
               >
-                🎯 PERFECT ORBIT HIT! Target Reached!
+                🎯 TARGET HIT! Auto-loading next solar system...
               </div>
             )}
 
@@ -613,16 +766,6 @@ export default function SpaceGravityGame({ soundEnabled }) {
                 🌌 Flew out of solar system! Decrease power or aim closer!
               </div>
             )}
-
-            <div
-              style={{
-                fontSize: '0.82rem',
-                color: 'var(--color-text-muted)',
-                lineHeight: '1.4',
-              }}
-            >
-              💡 <strong>Past Shot History:</strong> Faded dashed lines show your previous trajectory attempts so you can fine-tune your slingshot curve!
-            </div>
           </div>
         </div>
       </div>

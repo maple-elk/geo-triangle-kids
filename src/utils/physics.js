@@ -2,10 +2,10 @@
  * 2D Gravitational Physics Engine & Level Generator for Space Slingshot
  */
 
-export const G = 400; // Gravitational constant for fun arcade physics
+export const DEFAULT_G = 400; // Default Gravitational Constant
 
 // Generate random level layout with planets and target
-export function generateRandomLevel(width = 800, height = 500) {
+export function generateRandomLevel(width = 800, height = 500, config = {}) {
   const ship = { x: 90, y: height / 2 };
   const target = {
     x: width - 90,
@@ -13,7 +13,14 @@ export function generateRandomLevel(width = 800, height = 500) {
     radius: 22,
   };
 
-  const numPlanets = 2 + Math.floor(Math.random() * 2); // 2 to 3 planets
+  const countSetting = config.planetCount || 'auto';
+  const numPlanets =
+    countSetting === 'auto'
+      ? 2 + Math.floor(Math.random() * 2)
+      : Math.max(1, Math.min(5, Number(countSetting)));
+
+  const massMult = config.massMult ? Number(config.massMult) : 1.0;
+
   const planets = [];
 
   const planetColors = [
@@ -30,23 +37,23 @@ export function generateRandomLevel(width = 800, height = 500) {
 
     do {
       overlap = false;
-      px = 220 + Math.random() * (width - 440);
-      py = 80 + Math.random() * (height - 160);
-      radius = 24 + Math.floor(Math.random() * 32); // Radius 24-56
-      mass = Math.round(radius * (1.2 + Math.random() * 1.5)); // Mass scales with size & density
+      px = 200 + Math.random() * (width - 400);
+      py = 70 + Math.random() * (height - 140);
+      radius = 24 + Math.floor(Math.random() * 32);
+      mass = Math.round(radius * (1.2 + Math.random() * 1.5) * massMult);
 
       // Ensure no overlap with ship, target, or existing planets
       if (Math.hypot(px - ship.x, py - ship.y) < radius + 80) overlap = true;
       if (Math.hypot(px - target.x, py - target.y) < radius + 80) overlap = true;
 
       for (const p of planets) {
-        if (Math.hypot(px - p.x, py - p.y) < radius + p.radius + 60) {
+        if (Math.hypot(px - p.x, py - p.y) < radius + p.radius + 50) {
           overlap = true;
           break;
         }
       }
       attempts++;
-    } while (overlap && attempts < 100);
+    } while (overlap && attempts < 120);
 
     const theme = planetColors[i % planetColors.length];
 
@@ -66,7 +73,7 @@ export function generateRandomLevel(width = 800, height = 500) {
 }
 
 // Calculate gravitational acceleration at position (x, y) from all planets
-export function calculateGravitationalAccel(x, y, planets) {
+export function calculateGravitationalAccel(x, y, planets, gravityG = DEFAULT_G) {
   let ax = 0;
   let ay = 0;
 
@@ -80,7 +87,7 @@ export function calculateGravitationalAccel(x, y, planets) {
     if (dist < p.radius * 0.5) continue;
 
     // Force = G * mass / distSq
-    const accel = (G * p.mass) / Math.max(distSq, 400);
+    const accel = (gravityG * p.mass) / Math.max(distSq, 400);
 
     ax += accel * (dx / dist);
     ay += accel * (dy / dist);
@@ -90,10 +97,9 @@ export function calculateGravitationalAccel(x, y, planets) {
 }
 
 // Step physics forward by dt seconds (tuned for cinematic, readable speed)
-export function updateProjectilePhysics(pos, vel, planets, dt = 0.016) {
-  const { ax, ay } = calculateGravitationalAccel(pos.x, pos.y, planets);
+export function updateProjectilePhysics(pos, vel, planets, dt = 0.016, gravityG = DEFAULT_G) {
+  const { ax, ay } = calculateGravitationalAccel(pos.x, pos.y, planets, gravityG);
 
-  // Speed factor 0.55 slows simulation down for kids to easily track gravity curves
   const SPEED_FACTOR = 0.55;
 
   const nVel = {
@@ -109,7 +115,7 @@ export function updateProjectilePhysics(pos, vel, planets, dt = 0.016) {
   return { pos: nPos, vel: nVel, accel: { ax, ay } };
 }
 
-// Check collisions: 'planet', 'target', 'out_of_bounds', or 'none'
+// Check collisions: 'target', 'planet', 'out_of_bounds', or 'none'
 export function checkCollisions(pos, target, planets, width = 800, height = 500) {
   // Check target hit
   if (Math.hypot(pos.x - target.x, pos.y - target.y) <= target.radius + 6) {
@@ -124,7 +130,7 @@ export function checkCollisions(pos, target, planets, width = 800, height = 500)
   }
 
   // Check out of bounds
-  if (pos.x < -100 || pos.x > width + 100 || pos.y < -100 || pos.y > height + 100) {
+  if (pos.x < -150 || pos.x > width + 150 || pos.y < -150 || pos.y > height + 150) {
     return 'out_of_bounds';
   }
 
