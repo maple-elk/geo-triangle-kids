@@ -924,27 +924,89 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
             </div>
 
             {/* Floating Universe Settings Toggle (Bottom-Right) */}
-            <div className="overlay-hud overlay-hud-bottom-right">
+            <div className="overlay-hud overlay-hud-bottom-right" style={{ maxWidth: '420px', maxHeight: '420px', overflowY: 'auto' }}>
               <div
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', paddingBottom: showSettingsOverlay ? '8px' : '0', borderBottom: showSettingsOverlay ? '1px solid rgba(255,255,255,0.1)' : 'none' }}
                 onClick={() => setShowSettingsOverlay((v) => !v)}
               >
                 <span style={{ fontFamily: 'Fredoka', color: '#ffffff', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Sliders size={16} /> Universe Config
+                  <Sliders size={16} color="var(--color-accent-purple)" /> Universe Config & Objects
                 </span>
                 {showSettingsOverlay ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
               </div>
 
               {showSettingsOverlay && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#cbd5e1' }}>
-                    <span>Sim Speed ({simSpeedScale.toFixed(1)}x)</span>
-                    <input type="range" min="0.2" max="2.0" step="0.1" value={simSpeedScale} onChange={(e) => setSimSpeedScale(Number(e.target.value))} style={{ width: '120px' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                  {/* Sim Speed */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '4px' }}>
+                      <span>Simulation Speed</span>
+                      <span style={{ color: '#4ade80', fontWeight: '700' }}>{simSpeedScale.toFixed(1)}x</span>
+                    </div>
+                    <input type="range" min="0.2" max="2.0" step="0.1" value={simSpeedScale} onChange={(e) => setSimSpeedScale(Number(e.target.value))} style={{ width: '100%', accentColor: '#4ade80' }} />
                   </div>
-                  <div style={{ display: 'flex', gap: '6px', fontSize: '0.75rem', color: '#e2e8f0', flexWrap: 'wrap' }}>
-                    <label><input type="checkbox" checked={enableBlackHoles} onChange={(e) => { setEnableBlackHoles(e.target.checked); handleNewLevel({ ...level, enableBlackHoles: e.target.checked }); }} /> 🕳️ Black Hole</label>
-                    <label><input type="checkbox" checked={enableAsteroids} onChange={(e) => { setEnableAsteroids(e.target.checked); handleNewLevel({ ...level, enableAsteroids: e.target.checked }); }} /> 🪨 Asteroids</label>
-                    <label><input type="checkbox" checked={enableWormholes} onChange={(e) => { setEnableWormholes(e.target.checked); handleNewLevel({ ...level, enableWormholes: e.target.checked }); }} /> 🌀 Wormholes</label>
+
+                  {/* 6 Space Objects */}
+                  <div style={{ background: 'rgba(255,255,255,0.04)', padding: '8px', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#f1f5f9', marginBottom: '6px' }}>🌌 Optional Space Objects</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.75rem', color: '#e2e8f0' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={enableBlackHoles} onChange={(e) => { setEnableBlackHoles(e.target.checked); handleNewLevel({ ...level, enableBlackHoles: e.target.checked, enableAsteroids, enableWormholes, enablePulsars, enableBoosters, enableShields }); }} /> 🕳️ Black Hole
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={enableAsteroids} onChange={(e) => { setEnableAsteroids(e.target.checked); handleNewLevel({ ...level, enableBlackHoles, enableAsteroids: e.target.checked, enableWormholes, enablePulsars, enableBoosters, enableShields }); }} /> 🪨 Asteroids
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={enableWormholes} onChange={(e) => { setEnableWormholes(e.target.checked); handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes: e.target.checked, enablePulsars, enableBoosters, enableShields }); }} /> 🌀 Wormholes
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={enablePulsars} onChange={(e) => { setEnablePulsars(e.target.checked); handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars: e.target.checked, enableBoosters, enableShields }); }} /> ⚡ Pulsar
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={enableBoosters} onChange={(e) => { setEnableBoosters(e.target.checked); handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableBoosters: e.target.checked, enableShields }); }} /> 🚀 Speed Gate
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={enableShields} onChange={(e) => { setEnableShields(e.target.checked); handleNewLevel({ ...level, enableBlackHoles, enableAsteroids, enableWormholes, enablePulsars, enableBoosters, enableShields: e.target.checked }); }} /> 🛡️ Shield Deflector
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Overlays */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.75rem', color: '#e2e8f0' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={showGravityVectors} onChange={(e) => setShowGravityVectors(e.target.checked)} /> 🪐 Planet Gravity Vectors (F1, F2...)
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={showNetVector} onChange={(e) => setShowNetVector(e.target.checked)} /> ⚡ Net Gravity Vector (F_net)
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={showGravityGradients} onChange={(e) => setShowGravityGradients(e.target.checked)} /> 🌈 Gravity Field Gradients
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={autoNextOnTarget} onChange={(e) => setAutoNextOnTarget(e.target.checked)} /> 🎯 Auto-next on Target Hit
+                    </label>
+                  </div>
+
+                  {/* Planet Count */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '4px' }}>
+                      <span>Planets: {planetCount === 'auto' ? 'Auto (2-3)' : planetCount}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {['auto', 1, 2, 3, 4, 5].map((cnt) => (
+                        <button key={cnt} className={`preset-btn ${planetCount === cnt ? 'active' : ''}`} style={{ flex: 1, padding: '4px 2px', fontSize: '0.7rem' }} onClick={() => { setPlanetCount(cnt); handleNewLevel({ planetCount: cnt, massMult }); }}>
+                          {cnt === 'auto' ? 'Auto' : `${cnt}`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Gravity G */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '2px' }}>
+                      <span>Gravity Constant (G): {gravityG}</span>
+                    </div>
+                    <input type="range" min="100" max="1000" step="50" value={gravityG} onChange={(e) => setGravityG(Number(e.target.value))} style={{ width: '100%', accentColor: '#38bdf8' }} />
                   </div>
                 </div>
               )}
