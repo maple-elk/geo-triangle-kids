@@ -7,8 +7,8 @@ export const DEFAULT_G = 400; // Default Gravitational Constant
 // Generate random level layout with planets, target, spaceship, enemy ship, and optional space phenomena
 export function generateRandomLevel(width = 960, height = 600, config = {}) {
   const target = {
-    x: width - 100,
-    y: Math.floor(90 + Math.random() * (height - 180)),
+    x: width - 110,
+    y: Math.floor(100 + Math.random() * 260),
     radius: 24,
   };
 
@@ -53,9 +53,9 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let attempts = 0;
 
     do {
-      px = 240 + Math.random() * (width - 440);
-      py = 80 + Math.random() * (height - 160);
-      radius = 28 + Math.floor(Math.random() * 36);
+      px = 250 + Math.random() * (width - 460);
+      py = 90 + Math.random() * 260;
+      radius = 28 + Math.floor(Math.random() * 34);
       mass = Math.round(radius * (1.2 + Math.random() * 1.5) * massMult);
       attempts++;
     } while (isPositionOccupied(px, py, radius + 40) && attempts < 120);
@@ -82,7 +82,7 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let attempts = 0;
     do {
       bx = 280 + Math.random() * (width - 500);
-      by = 100 + Math.random() * (height - 200);
+      by = 100 + Math.random() * 240;
       attempts++;
     } while (isPositionOccupied(bx, by, 110) && attempts < 120);
 
@@ -104,7 +104,7 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let attempts = 0;
     do {
       ax = 250 + Math.random() * (width - 450);
-      ay = 90 + Math.random() * (height - 180);
+      ay = 90 + Math.random() * 260;
       attempts++;
     } while (isPositionOccupied(ax, ay, 90) && attempts < 120);
 
@@ -125,9 +125,9 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let attempts = 0;
     do {
       w1x = 220 + Math.random() * 200;
-      w1y = 90 + Math.random() * (height - 180);
+      w1y = 90 + Math.random() * 260;
       w2x = width - 360 + Math.random() * 200;
-      w2y = 90 + Math.random() * (height - 180);
+      w2y = 90 + Math.random() * 260;
       attempts++;
     } while (
       (isPositionOccupied(w1x, w1y, 70) || isPositionOccupied(w2x, w2y, 70)) &&
@@ -147,7 +147,7 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let attempts = 0;
     do {
       rx = 260 + Math.random() * (width - 480);
-      ry = 90 + Math.random() * (height - 180);
+      ry = 90 + Math.random() * 260;
       attempts++;
     } while (isPositionOccupied(rx, ry, 95) && attempts < 120);
 
@@ -169,7 +169,7 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let attempts = 0;
     do {
       gx = 240 + Math.random() * (width - 450);
-      gy = 90 + Math.random() * (height - 180);
+      gy = 90 + Math.random() * 260;
       attempts++;
     } while (isPositionOccupied(gx, gy, 80) && attempts < 120);
 
@@ -190,7 +190,7 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let attempts = 0;
     do {
       mx = 260 + Math.random() * (width - 460);
-      my = 90 + Math.random() * (height - 180);
+      my = 90 + Math.random() * 260;
       attempts++;
     } while (isPositionOccupied(mx, my, 85) && attempts < 120);
 
@@ -213,7 +213,7 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     let attempts = 0;
     do {
       ex = width - 260 + Math.random() * 140;
-      ey = 90 + Math.random() * (height - 180);
+      ey = 90 + Math.random() * 260;
       attempts++;
     } while (isPositionOccupied(ex, ey, 90) && attempts < 120);
 
@@ -228,13 +228,13 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
     occupiedList.push(enemyShip);
   }
 
-  // Generate random player spaceship position
+  // Generate random player spaceship position (well clear of bottom HUD)
   let sx, sy, shipOverlap;
   let shipAttempts = 0;
   do {
     shipOverlap = false;
-    sx = 70 + Math.random() * 180;
-    sy = 70 + Math.random() * (height - 140);
+    sx = 140 + Math.random() * 120;
+    sy = 100 + Math.random() * 250;
 
     if (isPositionOccupied(sx, sy, 80)) shipOverlap = true;
     shipAttempts++;

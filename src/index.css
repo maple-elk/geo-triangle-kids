@@ -231,27 +231,27 @@ body {
 .overlay-hud {
   position: absolute;
   z-index: 20;
-  background: rgba(15, 23, 42, 0.88);
+  background: rgba(15, 23, 42, 0.85);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: var(--radius-md);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-  padding: 14px 16px;
+  padding: 10px 14px;
 }
 
 .overlay-hud-bottom-left {
-  bottom: 24px;
-  left: 24px;
-  max-width: 380px;
-  width: 100%;
+  bottom: 16px;
+  left: 16px;
+  max-width: 340px;
+  width: auto;
 }
 
 .overlay-hud-bottom-right {
-  bottom: 24px;
-  right: 24px;
-  max-width: 360px;
-  width: 100%;
+  bottom: 16px;
+  right: 16px;
+  max-width: 320px;
+  width: auto;
 }
 
 /* Handles & SVG Elements */

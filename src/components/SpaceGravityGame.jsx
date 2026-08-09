@@ -717,6 +717,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
             ref={svgRef}
             className="svg-viewport space-viewport"
             viewBox={viewBox.join(' ')}
+            preserveAspectRatio="xMidYMid meet"
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             style={{ touchAction: 'none' }}
