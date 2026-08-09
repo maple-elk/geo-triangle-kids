@@ -72,6 +72,52 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   const [turnOwner, setTurnOwner] = useState('player'); // 'player' | 'enemy'
   const [score, setScore] = useState(0);
 
+  // Dynamic Deep Space Camera Zoom State [minX, minY, width, height]
+  const [viewBox, setViewBox] = useState([0, 0, 960, 600]);
+  const currentViewBoxRef = useRef([0, 0, 960, 600]);
+  const targetViewBoxRef = useRef([0, 0, 960, 600]);
+
+  // Smoothly update camera zoom/pan to follow out-of-bounds projectiles
+  const updateDynamicCamera = useCallback((activePos) => {
+    if (!activePos) {
+      targetViewBoxRef.current = [0, 0, 960, 600];
+    } else {
+      const margin = 160;
+      const minX = Math.min(0, activePos.x - margin);
+      const maxX = Math.max(960, activePos.x + margin);
+      const minY = Math.min(0, activePos.y - margin);
+      const maxY = Math.max(600, activePos.y + margin);
+
+      let w = maxX - minX;
+      let h = maxY - minY;
+
+      const aspect = 1.6;
+      if (w / h < aspect) {
+        w = h * aspect;
+        const cx = (minX + maxX) / 2;
+        targetViewBoxRef.current = [cx - w / 2, minY, w, h];
+      } else {
+        h = w / aspect;
+        const cy = (minY + maxY) / 2;
+        targetViewBoxRef.current = [minX, cy - h / 2, w, h];
+      }
+    }
+
+    const lerp = 0.14;
+    const cur = currentViewBoxRef.current;
+    const tgt = targetViewBoxRef.current;
+
+    const nextVB = [
+      cur[0] + (tgt[0] - cur[0]) * lerp,
+      cur[1] + (tgt[1] - cur[1]) * lerp,
+      cur[2] + (tgt[2] - cur[2]) * lerp,
+      cur[3] + (tgt[3] - cur[3]) * lerp,
+    ];
+
+    currentViewBoxRef.current = nextVB;
+    setViewBox([...nextVB]);
+  }, []);
+
   // End of Round Post-Match Summary Modal
   const [roundCompleted, setRoundCompleted] = useState(false);
   const [showEndSummary, setShowEndSummary] = useState(false);
@@ -135,6 +181,9 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       setTurnOwner('player');
       setRoundCompleted(false);
       setShowEndSummary(false);
+      targetViewBoxRef.current = [0, 0, 960, 600];
+      currentViewBoxRef.current = [0, 0, 960, 600];
+      setViewBox([0, 0, 960, 600]);
       playSnapSound(soundEnabled);
     },
     [
@@ -250,6 +299,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
 
         localEnemyTrail.push({ x: result.pos.x, y: result.pos.y });
         setEnemyTrail([...localEnemyTrail]);
+        updateDynamicCamera(result.pos);
 
         const collision = checkCollisions(result.pos, result.vel, level, 'enemy', 960, 600);
 
@@ -259,18 +309,21 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
           setShowEndSummary(true);
           playSnapSound(soundEnabled);
           setTurnOwner('player');
+          updateDynamicCamera(null);
           return;
         }
 
         if (collision.type === 'planet' || collision.type === 'black_hole' || collision.type === 'out_of_bounds') {
           setTurnOwner('player');
           setGameStatus('idle');
+          updateDynamicCamera(null);
           return;
         }
 
         if (localEnemyTrail.length > 2500) {
           setTurnOwner('player');
           setGameStatus('idle');
+          updateDynamicCamera(null);
           return;
         }
 
@@ -279,7 +332,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
 
       enemyAnimRef.current = requestAnimationFrame(enemyLoop);
     }, 850);
-  }, [enemyShip, ship, level, gravityG, simSpeedScale, soundEnabled]);
+  }, [enemyShip, ship, level, gravityG, simSpeedScale, soundEnabled, updateDynamicCamera]);
 
   // Save full completed shot trail to history
   const finalizeShot = useCallback(
@@ -287,6 +340,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       setIsSimulating(false);
       setGameStatus(status);
       setShowAllPastTrails(true);
+      updateDynamicCamera(null);
 
       if (finalTrail.length > 1) {
         setPastTrails((prev) => [
@@ -308,7 +362,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
         setRoundCompleted(false);
       }
     },
-    [enableEnemyShip, level, triggerEnemyTurn]
+    [enableEnemyShip, level, triggerEnemyTurn, updateDynamicCamera]
   );
 
   // Launch player projectile
@@ -404,6 +458,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
 
       localTrail.push({ x: result.pos.x, y: result.pos.y });
       setTrail([...localTrail]);
+      updateDynamicCamera(result.pos);
 
       const collision = checkCollisions(result.pos, result.vel, level, 'player', 960, 600);
 
@@ -414,6 +469,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
         try {
           confetti({ particleCount: 120, spread: 90, origin: { y: 0.6 } });
         } catch (e) {}
+        updateDynamicCamera(null);
         return;
       }
 
@@ -425,12 +481,14 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
         try {
           confetti({ particleCount: 150, spread: 100, origin: { y: 0.5 } });
         } catch (e) {}
+        updateDynamicCamera(null);
         return;
       }
 
       if (collision.type === 'black_hole') {
         finalizeShot('black_hole', localTrail);
         playSnapSound(soundEnabled);
+        updateDynamicCamera(null);
         return;
       }
 
@@ -442,16 +500,19 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       if (collision.type === 'planet') {
         finalizeShot('hit_planet', localTrail);
         playSnapSound(soundEnabled);
+        updateDynamicCamera(null);
         return;
       }
 
       if (collision.type === 'out_of_bounds') {
         finalizeShot('out', localTrail);
+        updateDynamicCamera(null);
         return;
       }
 
       if (localTrail.length > 3500) {
         finalizeShot('out', localTrail);
+        updateDynamicCamera(null);
         return;
       }
 
@@ -463,7 +524,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
     return () => {
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [isSimulating, level, gravityG, simSpeedScale, enemyShip, finalizeShot, soundEnabled]);
+  }, [isSimulating, level, gravityG, simSpeedScale, enemyShip, finalizeShot, soundEnabled, updateDynamicCamera]);
 
   // Aiming vector end point in SVG
   const rad = (angle * Math.PI) / 180;
@@ -598,7 +659,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
           <svg
             ref={svgRef}
             className="svg-viewport space-viewport"
-            viewBox="0 0 960 600"
+            viewBox={viewBox.join(' ')}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             style={{ touchAction: 'none' }}
@@ -628,8 +689,8 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
               </filter>
             </defs>
 
-            {/* Space Backdrop */}
-            <rect width="960" height="600" fill="url(#spaceBg)" />
+            {/* Expanded Deep Space Backdrop */}
+            <rect x="-3500" y="-2500" width="8000" height="6000" fill="url(#spaceBg)" />
 
             {/* Optional Planet Gravity Field Gradients */}
             {showGravityGradients &&
