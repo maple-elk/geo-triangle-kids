@@ -5,7 +5,7 @@ import AngleStatsPanel from './components/AngleStatsPanel';
 import AngleProofWidget from './components/AngleProofWidget';
 import PresetToolbar from './components/PresetToolbar';
 import ChallengeMode from './components/ChallengeMode';
-import SpaceGravityGame from './components/SpaceGravityGame';
+import SlingshotLauncherCard from './components/SlingshotLauncherCard';
 import KidsGuideModal from './components/KidsGuideModal';
 import { getTriangleAngles, getSideLengths, getPresets } from './utils/geometry';
 import { playPopSound, playSnapSound } from './utils/audio';
@@ -162,10 +162,10 @@ export default function App() {
         </main>
       )}
 
-      {/* Module 2: Space Gravity Slingshot */}
+      {/* Module 2: Space Gravity Slingshot Launcher */}
       {activeTab === 'gravity' && (
-        <main style={isFullscreen ? { flex: 1, height: 'calc(100vh - 90px)' } : {}}>
-          <SpaceGravityGame soundEnabled={soundEnabled} isFullscreen={isFullscreen} />
+        <main style={{ flex: 1 }}>
+          <SlingshotLauncherCard />
         </main>
       )}
 
