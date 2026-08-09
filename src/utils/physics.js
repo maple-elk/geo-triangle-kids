@@ -222,7 +222,7 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
       x: ex,
       y: ey,
       radius: 20,
-      status: 'active', // 'active' | 'disabled'
+      status: 'active',
       name: 'Enemy Interceptor',
     };
     occupiedList.push(enemyShip);
@@ -256,7 +256,7 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
   };
 }
 
-// AI Aiming Trajectory Predictor for Enemy Counter-Attack (with arcade imperfection scatter)
+// 3-Archetype Enemy AI Aiming Trajectory Generator
 export function calculateEnemyAim(enemyShip, playerShip, level, gravityG = DEFAULT_G) {
   if (!enemyShip || enemyShip.status !== 'active') return null;
 
@@ -264,47 +264,61 @@ export function calculateEnemyAim(enemyShip, playerShip, level, gravityG = DEFAU
   const dy = playerShip.y - enemyShip.y;
   const directAngle = Math.atan2(dy, dx);
 
-  let bestAngle = directAngle;
-  let bestPower = 55;
-  let minClosestDist = Infinity;
+  const randVal = Math.random();
+  let chosenArchetype = 'direct';
+  let archetypeName = '🎯 Direct Pressure';
 
-  // Search candidate trajectory options around direct line
-  for (let dDeg = -30; dDeg <= 30; dDeg += 12) {
-    const candidateAngle = directAngle + (dDeg * Math.PI) / 180;
-    for (let candidatePower = 35; candidatePower <= 75; candidatePower += 20) {
-      let simPos = { x: enemyShip.x, y: enemyShip.y };
-      let simVel = {
-        x: (candidatePower / 4.8) * Math.cos(candidateAngle),
-        y: (candidatePower / 4.8) * Math.sin(candidateAngle),
-      };
-
-      let closest = Infinity;
-      for (let step = 0; step < 160; step++) {
-        const physicsStep = updateProjectilePhysics(simPos, simVel, level, 0.016, gravityG, 1.0);
-        simPos = physicsStep.pos;
-        simVel = physicsStep.vel;
-
-        const dToPlayer = Math.hypot(simPos.x - playerShip.x, simPos.y - playerShip.y);
-        if (dToPlayer < closest) closest = dToPlayer;
-      }
-
-      if (closest < minClosestDist) {
-        minClosestDist = closest;
-        bestAngle = candidateAngle;
-        bestPower = candidatePower;
-      }
-    }
+  if (randVal < 0.40) {
+    chosenArchetype = 'direct';
+    archetypeName = '🎯 Direct Pressure';
+  } else if (randVal < 0.75) {
+    chosenArchetype = 'slingshot';
+    archetypeName = '🪐 Slingshot Trick Shot';
+  } else {
+    chosenArchetype = 'lob';
+    archetypeName = '🚀 Deep Space Lob';
   }
 
-  // Add humanized arcade error scatter (±14° angle scatter & ±12 power scatter)
-  const angleError = ((Math.random() * 28 - 14) * Math.PI) / 180;
-  const powerError = Math.random() * 24 - 12;
+  let finalAngle = directAngle;
+  let finalPower = 50;
 
-  const finalAngle = bestAngle + angleError;
-  const finalPower = Math.max(25, Math.min(85, bestPower + powerError));
+  if (chosenArchetype === 'direct') {
+    // Direct pressure with humanized ±12° scatter
+    const errorDeg = (Math.random() * 24 - 12);
+    finalAngle = directAngle + (errorDeg * Math.PI) / 180;
+    finalPower = 42 + Math.random() * 25;
+  } else if (chosenArchetype === 'slingshot') {
+    // Slingshot around nearest planet's gravity well
+    const { planets = [] } = level;
+    if (planets.length > 0) {
+      const nearestPlanet = planets.reduce((prev, curr) => {
+        const dPrev = Math.hypot(prev.x - enemyShip.x, prev.y - enemyShip.y);
+        const dCurr = Math.hypot(curr.x - enemyShip.x, curr.y - enemyShip.y);
+        return dCurr < dPrev ? curr : prev;
+      }, planets[0]);
+
+      // Target tangent edge of nearest planet
+      const pAngle = Math.atan2(nearestPlanet.y - enemyShip.y, nearestPlanet.x - enemyShip.x);
+      const tangentOffset = (Math.random() > 0.5 ? 1 : -1) * 0.35;
+      finalAngle = pAngle + tangentOffset;
+      finalPower = 48 + Math.random() * 28;
+    } else {
+      finalAngle = directAngle + ((Math.random() * 30 - 15) * Math.PI) / 180;
+      finalPower = 55;
+    }
+  } else if (chosenArchetype === 'lob') {
+    // Deep Space Lob (high angle offset, high power 75-90)
+    const lobOffsetDeg = Math.random() > 0.5 ? (40 + Math.random() * 30) : -(40 + Math.random() * 30);
+    finalAngle = directAngle + (lobOffsetDeg * Math.PI) / 180;
+    finalPower = 72 + Math.random() * 20;
+  }
+
+  const finalAngleDeg = Math.round(((finalAngle * 180) / Math.PI + 360) % 360);
 
   return {
-    angleDeg: Math.round(((finalAngle * 180) / Math.PI + 360) % 360),
+    archetype: chosenArchetype,
+    archetypeName,
+    angleDeg: finalAngleDeg,
     power: Math.round(finalPower),
     initialVel: {
       x: (finalPower / 4.8) * Math.cos(finalAngle),

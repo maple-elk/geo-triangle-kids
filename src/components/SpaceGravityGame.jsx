@@ -76,7 +76,8 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   const [roundCompleted, setRoundCompleted] = useState(false);
   const [showEndSummary, setShowEndSummary] = useState(false);
 
-  // Enemy Counter-Attack Simulation State
+  // Enemy Counter-Attack Simulation & Archetype Aiming State
+  const [enemyAimInfo, setEnemyAimInfo] = useState(null);
   const [enemyProjectilePos, setEnemyProjectilePos] = useState(null);
   const [enemyProjectileVel, setEnemyProjectileVel] = useState(null);
   const [enemyTrail, setEnemyTrail] = useState([]);
@@ -124,6 +125,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       setProjectilePos(null);
       setProjectileVel(null);
       setProjectileAccel({ ax: 0, ay: 0 });
+      setEnemyAimInfo(null);
       setEnemyProjectilePos(null);
       setEnemyProjectileVel(null);
       setTrail([]);
@@ -198,47 +200,17 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
     }
   };
 
-  // Save full completed shot trail to history
-  const finalizeShot = useCallback(
-    (status, finalTrail) => {
-      setIsSimulating(false);
-      setGameStatus(status);
-
-      if (finalTrail.length > 1) {
-        setPastTrails((prev) => [
-          ...prev,
-          {
-            id: Date.now(),
-            points: finalTrail,
-            status,
-          },
-        ]);
-      }
-
-      // If target was hit, pause and present post-match summary (require Spacebar to advance!)
-      if (status === 'hit_target' || status === 'hit_enemy') {
-        setRoundCompleted(true);
-        setShowEndSummary(true);
-      } else if (enableEnemyShip && level.enemyShip && level.enemyShip.status === 'active') {
-        // Trigger Enemy Counter-Attack Turn!
-        triggerEnemyTurn();
-      } else {
-        // Round ended in miss/crash without enemy ship, allow re-aiming or Space to try again
-        setRoundCompleted(false);
-      }
-    },
-    [enableEnemyShip, level]
-  );
-
-  // Trigger Enemy Counter-Attack Turn (Imperfect AI aiming)
+  // Trigger Enemy Counter-Attack Turn (Imperfect AI aiming with 3 archetypes)
   const triggerEnemyTurn = useCallback(() => {
     if (!enemyShip || enemyShip.status !== 'active') return;
 
     setTurnOwner('enemy');
     setGameStatus('enemy_aiming');
 
+    const aimResult = calculateEnemyAim(enemyShip, ship, level, gravityG);
+    setEnemyAimInfo(aimResult);
+
     setTimeout(() => {
-      const aimResult = calculateEnemyAim(enemyShip, ship, level, gravityG);
       if (!aimResult) {
         setTurnOwner('player');
         setGameStatus('idle');
@@ -306,8 +278,37 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       };
 
       enemyAnimRef.current = requestAnimationFrame(enemyLoop);
-    }, 700);
+    }, 850);
   }, [enemyShip, ship, level, gravityG, simSpeedScale, soundEnabled]);
+
+  // Save full completed shot trail to history
+  const finalizeShot = useCallback(
+    (status, finalTrail) => {
+      setIsSimulating(false);
+      setGameStatus(status);
+
+      if (finalTrail.length > 1) {
+        setPastTrails((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
+            points: finalTrail,
+            status,
+          },
+        ]);
+      }
+
+      if (status === 'hit_target' || status === 'hit_enemy') {
+        setRoundCompleted(true);
+        setShowEndSummary(true);
+      } else if (enableEnemyShip && level.enemyShip && level.enemyShip.status === 'active') {
+        triggerEnemyTurn();
+      } else {
+        setRoundCompleted(false);
+      }
+    },
+    [enableEnemyShip, level, triggerEnemyTurn]
+  );
 
   // Launch player projectile
   const handleLaunch = useCallback(() => {
@@ -339,7 +340,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
     setGameStatus('flying');
   }, [isSimulating, turnOwner, roundCompleted, angle, power, ship, boosters, handleNewLevel, soundEnabled]);
 
-  // Keyboard controls: Arrow Keys for angle & power, Spacebar to launch OR advance level!
+  // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.code === 'Space' || e.key === ' ') {
@@ -531,6 +532,19 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
         };
       });
 
+  // Calculate Threat Cone sector polygon for enemy aiming phase
+  let enemyThreatArcPath = '';
+  if (enemyShip && enemyAimInfo && gameStatus === 'enemy_aiming') {
+    const eRad = (enemyAimInfo.angleDeg * Math.PI) / 180;
+    const spread = 0.35; // ~20 degree cone width
+    const r = 160;
+    const x1 = enemyShip.x + r * Math.cos(eRad - spread);
+    const y1 = enemyShip.y + r * Math.sin(eRad - spread);
+    const x2 = enemyShip.x + r * Math.cos(eRad + spread);
+    const y2 = enemyShip.y + r * Math.sin(eRad + spread);
+    enemyThreatArcPath = `M ${enemyShip.x} ${enemyShip.y} L ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2} Z`;
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative' }}>
       {/* Canvas Card */}
@@ -552,9 +566,9 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                 💥 Direct Hit! Enemy orbital fire struck your ship!
               </div>
             )}
-            {gameStatus === 'enemy_aiming' && (
+            {gameStatus === 'enemy_aiming' && enemyAimInfo && (
               <div className="status-badge" style={{ background: 'rgba(245, 158, 11, 0.3)', color: '#f59e0b', border: '1px solid #f59e0b' }}>
-                👾 Enemy Interceptor Targeting...
+                👾 Enemy Interceptor: {enemyAimInfo.archetypeName}
               </div>
             )}
 
@@ -802,6 +816,11 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                 </text>
               </g>
             ))}
+
+            {/* Red Threat Targeting Sector Arc Cone (Enemy Aiming Visual) */}
+            {enemyThreatArcPath && (
+              <path d={enemyThreatArcPath} fill="rgba(239, 68, 68, 0.16)" stroke="rgba(239, 68, 68, 0.45)" strokeWidth="1.5" strokeDasharray="4 3" />
+            )}
 
             {/* 8. Optional Hostile Enemy Spaceship */}
             {enemyShip && (
