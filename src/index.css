@@ -213,6 +213,10 @@ body {
   cursor: default;
 }
 
+.svg-viewport.space-viewport {
+  height: 540px;
+}
+
 /* Handles & SVG Elements */
 .vertex-handle {
   cursor: grab;

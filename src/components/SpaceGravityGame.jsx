@@ -18,9 +18,9 @@ export default function SpaceGravityGame({ soundEnabled }) {
   const [massMult, setMassMult] = useState(1.0); // 0.5..2.0
   const [autoNextOnTarget, setAutoNextOnTarget] = useState(true);
 
-  // Level & Physics State
+  // Level & Physics State (Spacious 960x600 canvas)
   const [level, setLevel] = useState(() =>
-    generateRandomLevel(760, 480, { planetCount: 'auto', massMult: 1.0 })
+    generateRandomLevel(960, 600, { planetCount: 'auto', massMult: 1.0 })
   );
   const [angle, setAngle] = useState(335); // Degrees (0 to 360)
   const [power, setPower] = useState(55); // Magnitude (10 to 100)
@@ -49,7 +49,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
   const handleNewLevel = useCallback(
     (customConfig) => {
       const cfg = customConfig || { planetCount, massMult };
-      setLevel(generateRandomLevel(760, 480, cfg));
+      setLevel(generateRandomLevel(960, 600, cfg));
       setIsSimulating(false);
       setProjectilePos(null);
       setTrail([]);
@@ -214,7 +214,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
       localTrail.push({ x: result.pos.x, y: result.pos.y });
       setTrail([...localTrail]);
 
-      const collision = checkCollisions(result.pos, target, planets, 760, 480);
+      const collision = checkCollisions(result.pos, target, planets, 960, 600);
 
       if (collision === 'target') {
         finalizeShot('hit_target', localTrail);
@@ -238,7 +238,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
       }
 
       // Safeguard max steps
-      if (localTrail.length > 1500) {
+      if (localTrail.length > 1800) {
         finalizeShot('out', localTrail);
         return;
       }
@@ -307,8 +307,8 @@ export default function SpaceGravityGame({ soundEnabled }) {
 
         <svg
           ref={svgRef}
-          className="svg-viewport"
-          viewBox="0 0 760 480"
+          className="svg-viewport space-viewport"
+          viewBox="0 0 960 600"
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           style={{ touchAction: 'none' }}
@@ -330,7 +330,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
           </defs>
 
           {/* Space Backdrop */}
-          <rect width="760" height="480" fill="url(#spaceBg)" />
+          <rect width="960" height="600" fill="url(#spaceBg)" />
 
           {/* Faded Historical Past Shot Trails */}
           {displayedPastTrails.map((past) => (
@@ -460,7 +460,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
             </g>
           )}
 
-          {/* Spaceship Handle */}
+          {/* Spaceship Handle (Randomized position, interactive) */}
           <g
             transform={`translate(${ship.x}, ${ship.y})`}
             onPointerDown={handlePointerDown}
@@ -786,7 +786,7 @@ export default function SpaceGravityGame({ soundEnabled }) {
                 lineHeight: '1.4',
               }}
             >
-              💡 <strong>Keyboard Controls:</strong> Use <strong>Left/Right Arrows</strong> to rotate launch angle, <strong>Up/Down Arrows</strong> for power (hold <strong>Shift</strong> for 5x fast adjustments), and <strong>Spacebar</strong> to shoot!
+              💡 <strong>Space Navigation:</strong> Spaceship starting positions are randomly placed each orbit with safe distance from all celestial bodies!
             </div>
           </div>
         </div>

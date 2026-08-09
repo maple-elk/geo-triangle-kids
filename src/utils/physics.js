@@ -4,13 +4,12 @@
 
 export const DEFAULT_G = 400; // Default Gravitational Constant
 
-// Generate random level layout with planets and target
-export function generateRandomLevel(width = 800, height = 500, config = {}) {
-  const ship = { x: 90, y: height / 2 };
+// Generate random level layout with planets, target, and randomized spaceship position
+export function generateRandomLevel(width = 960, height = 600, config = {}) {
   const target = {
-    x: width - 90,
-    y: Math.floor(100 + Math.random() * (height - 200)),
-    radius: 22,
+    x: width - 100,
+    y: Math.floor(90 + Math.random() * (height - 180)),
+    radius: 24,
   };
 
   const countSetting = config.planetCount || 'auto';
@@ -20,7 +19,6 @@ export function generateRandomLevel(width = 800, height = 500, config = {}) {
       : Math.max(1, Math.min(5, Number(countSetting)));
 
   const massMult = config.massMult ? Number(config.massMult) : 1.0;
-
   const planets = [];
 
   const planetColors = [
@@ -31,23 +29,22 @@ export function generateRandomLevel(width = 800, height = 500, config = {}) {
     { fill: '#10b981', glow: 'rgba(16, 185, 129, 0.35)', name: 'Verdant' },
   ];
 
+  // Generate planets
   for (let i = 0; i < numPlanets; i++) {
     let px, py, radius, mass, overlap;
     let attempts = 0;
 
     do {
       overlap = false;
-      px = 200 + Math.random() * (width - 400);
-      py = 70 + Math.random() * (height - 140);
-      radius = 24 + Math.floor(Math.random() * 32);
+      px = 240 + Math.random() * (width - 440);
+      py = 80 + Math.random() * (height - 160);
+      radius = 28 + Math.floor(Math.random() * 36);
       mass = Math.round(radius * (1.2 + Math.random() * 1.5) * massMult);
 
-      // Ensure no overlap with ship, target, or existing planets
-      if (Math.hypot(px - ship.x, py - ship.y) < radius + 80) overlap = true;
-      if (Math.hypot(px - target.x, py - target.y) < radius + 80) overlap = true;
+      if (Math.hypot(px - target.x, py - target.y) < radius + 90) overlap = true;
 
       for (const p of planets) {
-        if (Math.hypot(px - p.x, py - p.y) < radius + p.radius + 50) {
+        if (Math.hypot(px - p.x, py - p.y) < radius + p.radius + 60) {
           overlap = true;
           break;
         }
@@ -68,6 +65,27 @@ export function generateRandomLevel(width = 800, height = 500, config = {}) {
       name: theme.name,
     });
   }
+
+  // Generate random spaceship position (guaranteed no overlap with planets or target)
+  let sx, sy, shipOverlap;
+  let shipAttempts = 0;
+  do {
+    shipOverlap = false;
+    sx = 70 + Math.random() * 180; // Left sector
+    sy = 70 + Math.random() * (height - 140);
+
+    if (Math.hypot(sx - target.x, sy - target.y) < 140) shipOverlap = true;
+
+    for (const p of planets) {
+      if (Math.hypot(sx - p.x, sy - p.y) < p.radius + 70) {
+        shipOverlap = true;
+        break;
+      }
+    }
+    shipAttempts++;
+  } while (shipOverlap && shipAttempts < 150);
+
+  const ship = { x: sx, y: sy };
 
   return { ship, target, planets };
 }
@@ -116,7 +134,7 @@ export function updateProjectilePhysics(pos, vel, planets, dt = 0.016, gravityG 
 }
 
 // Check collisions: 'target', 'planet', 'out_of_bounds', or 'none'
-export function checkCollisions(pos, target, planets, width = 800, height = 500) {
+export function checkCollisions(pos, target, planets, width = 960, height = 600) {
   // Check target hit
   if (Math.hypot(pos.x - target.x, pos.y - target.y) <= target.radius + 6) {
     return 'target';
