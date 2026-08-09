@@ -10,7 +10,7 @@ import {
   DEFAULT_G,
 } from '../utils/physics';
 import { playPopSound, playSnapSound, playVictorySound } from '../utils/audio';
-import { Play, RotateCcw, Compass, Zap, Eye, EyeOff, Sliders, Activity, ChevronUp, ChevronDown, ShieldAlert } from 'lucide-react';
+import { Play, RotateCcw, Compass, Zap, Eye, EyeOff, Sliders, Activity, ChevronUp, ChevronDown, ArrowRight } from 'lucide-react';
 
 export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   const svgRef = useRef(null);
@@ -20,7 +20,6 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   const [gravityG, setGravityG] = useState(DEFAULT_G); // 100..1000
   const [massMult, setMassMult] = useState(1.0); // 0.5..2.0
   const [simSpeedScale, setSimSpeedScale] = useState(1.0); // 0.2..2.0
-  const [autoNextOnTarget, setAutoNextOnTarget] = useState(true);
 
   // Optional Space Objects Toggles (ALL DEFAULTED TO OFF / FALSE)
   const [enableBlackHoles, setEnableBlackHoles] = useState(false);
@@ -69,9 +68,13 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   const [projectileVel, setProjectileVel] = useState(null);
   const [projectileAccel, setProjectileAccel] = useState({ ax: 0, ay: 0 });
   const [trail, setTrail] = useState([]);
-  const [gameStatus, setGameStatus] = useState('idle'); // 'idle' | 'flying' | 'hit_target' | 'hit_enemy' | 'hit_planet' | 'black_hole' | 'out'
+  const [gameStatus, setGameStatus] = useState('idle'); // 'idle' | 'flying' | 'hit_target' | 'hit_enemy' | 'hit_player' | 'hit_planet' | 'black_hole' | 'out'
   const [turnOwner, setTurnOwner] = useState('player'); // 'player' | 'enemy'
   const [score, setScore] = useState(0);
+
+  // End of Round Post-Match Summary Modal
+  const [roundCompleted, setRoundCompleted] = useState(false);
+  const [showEndSummary, setShowEndSummary] = useState(false);
 
   // Enemy Counter-Attack Simulation State
   const [enemyProjectilePos, setEnemyProjectilePos] = useState(null);
@@ -80,7 +83,6 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
 
   const animRef = useRef(null);
   const enemyAnimRef = useRef(null);
-  const autoNextTimerRef = useRef(null);
   const velRef = useRef({ x: 0, y: 0 });
   const posRef = useRef({ x: 0, y: 0 });
   const warpCooldownRef = useRef(0);
@@ -129,6 +131,8 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       setPastTrails([]);
       setGameStatus('idle');
       setTurnOwner('player');
+      setRoundCompleted(false);
+      setShowEndSummary(false);
       playSnapSound(soundEnabled);
     },
     [
@@ -157,7 +161,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
 
   // Update angle and power from pointer position
   const updateAimFromPointer = (e) => {
-    if (isSimulating || turnOwner !== 'player') return;
+    if (isSimulating || turnOwner !== 'player' || roundCompleted) return;
     const coords = getSVGCoordinates(e);
     const dx = coords.x - ship.x;
     const dy = coords.y - ship.y;
@@ -173,7 +177,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
   };
 
   const handlePointerDown = (e) => {
-    if (isSimulating || turnOwner !== 'player') return;
+    if (isSimulating || turnOwner !== 'player' || roundCompleted) return;
     setIsDraggingAim(true);
     e.target.setPointerCapture(e.pointerId);
     updateAimFromPointer(e);
@@ -194,7 +198,39 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
     }
   };
 
-  // Trigger Enemy Counter-Attack Turn
+  // Save full completed shot trail to history
+  const finalizeShot = useCallback(
+    (status, finalTrail) => {
+      setIsSimulating(false);
+      setGameStatus(status);
+
+      if (finalTrail.length > 1) {
+        setPastTrails((prev) => [
+          ...prev,
+          {
+            id: Date.now(),
+            points: finalTrail,
+            status,
+          },
+        ]);
+      }
+
+      // If target was hit, pause and present post-match summary (require Spacebar to advance!)
+      if (status === 'hit_target' || status === 'hit_enemy') {
+        setRoundCompleted(true);
+        setShowEndSummary(true);
+      } else if (enableEnemyShip && level.enemyShip && level.enemyShip.status === 'active') {
+        // Trigger Enemy Counter-Attack Turn!
+        triggerEnemyTurn();
+      } else {
+        // Round ended in miss/crash without enemy ship, allow re-aiming or Space to try again
+        setRoundCompleted(false);
+      }
+    },
+    [enableEnemyShip, level]
+  );
+
+  // Trigger Enemy Counter-Attack Turn (Imperfect AI aiming)
   const triggerEnemyTurn = useCallback(() => {
     if (!enemyShip || enemyShip.status !== 'active') return;
 
@@ -247,6 +283,8 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
 
         if (collision.type === 'hit_player') {
           setGameStatus('hit_player');
+          setRoundCompleted(true);
+          setShowEndSummary(true);
           playSnapSound(soundEnabled);
           setTurnOwner('player');
           return;
@@ -271,42 +309,13 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
     }, 700);
   }, [enemyShip, ship, level, gravityG, simSpeedScale, soundEnabled]);
 
-  // Save full completed shot trail to history
-  const finalizeShot = useCallback(
-    (status, finalTrail) => {
-      setIsSimulating(false);
-      setGameStatus(status);
-
-      if (finalTrail.length > 1) {
-        setPastTrails((prev) => [
-          ...prev,
-          {
-            id: Date.now(),
-            points: finalTrail,
-            status,
-          },
-        ]);
-      }
-
-      // Auto-generate new planets when target is achieved
-      if (status === 'hit_target' && autoNextOnTarget) {
-        autoNextTimerRef.current = setTimeout(() => {
-          handleNewLevel();
-        }, 1400);
-      } else if (status !== 'hit_target' && enableEnemyShip && level.enemyShip && level.enemyShip.status === 'active') {
-        // Trigger Enemy Counter-Attack!
-        triggerEnemyTurn();
-      }
-    },
-    [autoNextOnTarget, enableEnemyShip, level, handleNewLevel, triggerEnemyTurn]
-  );
-
   // Launch player projectile
   const handleLaunch = useCallback(() => {
     if (isSimulating || turnOwner !== 'player') return;
 
-    if (autoNextTimerRef.current) {
-      clearTimeout(autoNextTimerRef.current);
+    if (roundCompleted) {
+      handleNewLevel();
+      return;
     }
 
     playPopSound(soundEnabled);
@@ -328,12 +337,22 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
     setTrail([{ x: ship.x, y: ship.y }]);
     setIsSimulating(true);
     setGameStatus('flying');
-  }, [isSimulating, turnOwner, angle, power, ship, boosters, soundEnabled]);
+  }, [isSimulating, turnOwner, roundCompleted, angle, power, ship, boosters, handleNewLevel, soundEnabled]);
 
-  // Keyboard controls: Arrow Keys for angle & power, Spacebar to launch!
+  // Keyboard controls: Arrow Keys for angle & power, Spacebar to launch OR advance level!
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (isSimulating || turnOwner !== 'player') return;
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        if (roundCompleted) {
+          handleNewLevel();
+        } else if (!isSimulating && turnOwner === 'player') {
+          handleLaunch();
+        }
+        return;
+      }
+
+      if (isSimulating || turnOwner !== 'player' || roundCompleted) return;
 
       const step = e.shiftKey ? 5 : 1;
 
@@ -349,15 +368,12 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
       } else if (e.code === 'ArrowDown') {
         e.preventDefault();
         setPower((prev) => Math.max(10, prev - step));
-      } else if (e.code === 'Space' || e.key === ' ') {
-        e.preventDefault();
-        handleLaunch();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleLaunch, isSimulating, turnOwner]);
+  }, [handleLaunch, isSimulating, turnOwner, roundCompleted, handleNewLevel]);
 
   // Physics Animation Loop for Player Shot
   useEffect(() => {
@@ -563,525 +579,632 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
           </div>
         </div>
 
-        <svg
-          ref={svgRef}
-          className="svg-viewport space-viewport"
-          viewBox="0 0 960 600"
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          style={{ touchAction: 'none' }}
-        >
-          <defs>
-            <radialGradient id="spaceBg" cx="50%" cy="50%" r="75%">
-              <stop offset="0%" stopColor="#0f172a" />
-              <stop offset="100%" stopColor="#020617" />
-            </radialGradient>
-
-            {/* Planet Radial Gradients */}
-            {planets.map((planet) => (
-              <radialGradient key={planet.id} id={`gravGrad_${planet.id}`}>
-                <stop offset="0%" stopColor={planet.fill} stopOpacity="0.45" />
-                <stop offset="50%" stopColor={planet.fill} stopOpacity="0.18" />
-                <stop offset="100%" stopColor={planet.fill} stopOpacity="0.0" />
+        <div style={{ position: 'relative' }}>
+          <svg
+            ref={svgRef}
+            className="svg-viewport space-viewport"
+            viewBox="0 0 960 600"
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            style={{ touchAction: 'none' }}
+          >
+            <defs>
+              <radialGradient id="spaceBg" cx="50%" cy="50%" r="75%">
+                <stop offset="0%" stopColor="#0f172a" />
+                <stop offset="100%" stopColor="#020617" />
               </radialGradient>
-            ))}
 
-            <filter id="planetGlow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="8" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
-            <filter id="targetGlow" x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="12" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
-          </defs>
+              {/* Planet Radial Gradients */}
+              {planets.map((planet) => (
+                <radialGradient key={planet.id} id={`gravGrad_${planet.id}`}>
+                  <stop offset="0%" stopColor={planet.fill} stopOpacity="0.45" />
+                  <stop offset="50%" stopColor={planet.fill} stopOpacity="0.18" />
+                  <stop offset="100%" stopColor={planet.fill} stopOpacity="0.0" />
+                </radialGradient>
+              ))}
 
-          {/* Space Backdrop */}
-          <rect width="960" height="600" fill="url(#spaceBg)" />
+              <filter id="planetGlow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="8" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+              <filter id="targetGlow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="12" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+            </defs>
 
-          {/* Optional Planet Gravity Field Gradients */}
-          {showGravityGradients &&
-            planets.map((planet) => (
-              <circle
-                key={`grad_${planet.id}`}
-                cx={planet.x}
-                cy={planet.y}
-                r={planet.radius * 2.9}
-                fill={`url(#gravGrad_${planet.id})`}
-                style={{ pointerEvents: 'none' }}
-              />
-            ))}
+            {/* Space Backdrop */}
+            <rect width="960" height="600" fill="url(#spaceBg)" />
 
-          {/* Faded Historical Past Shot Trails */}
-          {displayedPastTrails.map((past) => (
-            <polyline
-              key={past.id}
-              points={past.points.map((p) => `${p.x},${p.y}`).join(' ')}
-              fill="none"
-              stroke={
-                past.status === 'hit_target'
-                  ? '#4ade80'
-                  : past.status === 'hit_enemy'
-                  ? '#ec4899'
-                  : past.status === 'black_hole'
-                  ? '#f97316'
-                  : past.status === 'hit_planet'
-                  ? '#f87171'
-                  : '#cbd5e1'
-              }
-              strokeWidth="2"
-              strokeDasharray="4 3"
-              strokeLinecap="round"
-              opacity={past.opacity}
-            />
-          ))}
+            {/* Optional Planet Gravity Field Gradients */}
+            {showGravityGradients &&
+              planets.map((planet) => (
+                <circle
+                  key={`grad_${planet.id}`}
+                  cx={planet.x}
+                  cy={planet.y}
+                  r={planet.radius * 2.9}
+                  fill={`url(#gravGrad_${planet.id})`}
+                  style={{ pointerEvents: 'none' }}
+                />
+              ))}
 
-          {/* 1. Planets with Gravity Fields */}
-          {planets.map((planet) => (
-            <g key={planet.id}>
-              <circle
-                cx={planet.x}
-                cy={planet.y}
-                r={planet.radius * 2.6}
+            {/* Faded Historical Past Shot Trails */}
+            {displayedPastTrails.map((past) => (
+              <polyline
+                key={past.id}
+                points={past.points.map((p) => `${p.x},${p.y}`).join(' ')}
                 fill="none"
-                stroke={planet.fill}
-                strokeWidth="1.5"
-                strokeDasharray="4 4"
-                opacity="0.35"
+                stroke={
+                  past.status === 'hit_target'
+                    ? '#4ade80'
+                    : past.status === 'hit_enemy'
+                    ? '#ec4899'
+                    : past.status === 'black_hole'
+                    ? '#f97316'
+                    : past.status === 'hit_planet'
+                    ? '#f87171'
+                    : '#cbd5e1'
+                }
+                strokeWidth="2"
+                strokeDasharray="4 3"
+                strokeLinecap="round"
+                opacity={past.opacity}
               />
+            ))}
+
+            {/* 1. Planets with Gravity Fields */}
+            {planets.map((planet) => (
+              <g key={planet.id}>
+                <circle
+                  cx={planet.x}
+                  cy={planet.y}
+                  r={planet.radius * 2.6}
+                  fill="none"
+                  stroke={planet.fill}
+                  strokeWidth="1.5"
+                  strokeDasharray="4 4"
+                  opacity="0.35"
+                />
+                <circle
+                  cx={planet.x}
+                  cy={planet.y}
+                  r={planet.radius}
+                  fill={planet.fill}
+                  filter="url(#planetGlow)"
+                />
+                <circle
+                  cx={planet.x - planet.radius * 0.3}
+                  cy={planet.y - planet.radius * 0.3}
+                  r={planet.radius * 0.4}
+                  fill="rgba(255, 255, 255, 0.25)"
+                />
+                <text
+                  x={planet.x}
+                  y={planet.y + planet.radius + 16}
+                  textAnchor="middle"
+                  fill="rgba(241, 245, 249, 0.75)"
+                  fontSize="11"
+                  fontWeight="600"
+                >
+                  M = {planet.mass}
+                </text>
+              </g>
+            ))}
+
+            {/* 2. Optional Black Holes */}
+            {blackHoles.map((bh) => (
+              <g key={bh.id} transform={`translate(${bh.x}, ${bh.y})`}>
+                <circle
+                  r={bh.eventRadius}
+                  fill="rgba(249, 115, 22, 0.15)"
+                  stroke="#f97316"
+                  strokeWidth="2"
+                  strokeDasharray="6 4"
+                >
+                  <animateTransform
+                    attributeName="transform"
+                    type="rotate"
+                    from="0"
+                    to="360"
+                    dur="4s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+                <circle r={bh.radius} fill="#000000" stroke="#f97316" strokeWidth="2.5" />
+                <text y={bh.eventRadius + 15} textAnchor="middle" fill="#f97316" fontSize="10" fontWeight="700">
+                  🕳️ Event Horizon
+                </text>
+              </g>
+            ))}
+
+            {/* 3. Optional Asteroid Clouds */}
+            {asteroids.map((ast) => (
+              <g key={ast.id}>
+                <circle
+                  cx={ast.x}
+                  cy={ast.y}
+                  r={ast.radius}
+                  fill="rgba(245, 158, 11, 0.16)"
+                  stroke="#f59e0b"
+                  strokeWidth="1.5"
+                  strokeDasharray="5 5"
+                />
+                <text x={ast.x} y={ast.y + 4} textAnchor="middle" fontSize="24" opacity="0.7">
+                  🪨
+                </text>
+                <text x={ast.x} y={ast.y + ast.radius + 14} textAnchor="middle" fill="#f59e0b" fontSize="10" fontWeight="700">
+                  Asteroid Drag Cloud
+                </text>
+              </g>
+            ))}
+
+            {/* 4. Optional Wormhole Portals */}
+            {wormholes.map((wh) => (
+              <g key={wh.id} transform={`translate(${wh.x}, ${wh.y})`}>
+                <circle r={wh.radius + 8} fill="none" stroke={wh.color} strokeWidth="2" strokeDasharray="4 4">
+                  <animateTransform
+                    attributeName="transform"
+                    type="rotate"
+                    from="0"
+                    to="360"
+                    dur="3s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+                <circle r={wh.radius} fill={`${wh.color}44`} stroke={wh.color} strokeWidth="3" />
+                <text textAnchor="middle" dy="4" fontSize="14">
+                  🌀
+                </text>
+              </g>
+            ))}
+
+            {/* 5. Optional Repulsive Pulsar */}
+            {pulsars.map((pul) => (
+              <g key={pul.id} transform={`translate(${pul.x}, ${pul.y})`}>
+                <circle r={pul.radius + 12} fill="none" stroke="#38bdf8" strokeWidth="1.5" strokeDasharray="3 3">
+                  <animateTransform
+                    attributeName="transform"
+                    type="rotate"
+                    from="360"
+                    to="0"
+                    dur="2s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+                <circle r={pul.radius} fill="#0284c7" stroke="#ffffff" strokeWidth="2.5" />
+                <text textAnchor="middle" dy="4" fontSize="14">
+                  ⚡
+                </text>
+                <text y={pul.radius + 16} textAnchor="middle" fill="#38bdf8" fontSize="10" fontWeight="700">
+                  Pulsar (Anti-Gravity)
+                </text>
+              </g>
+            ))}
+
+            {/* 6. Optional Speed Booster Gate */}
+            {boosters.map((b) => (
+              <g key={b.id} transform={`translate(${b.x}, ${b.y})`}>
+                <polygon points="0,-26 22,-13 22,13 0,26 -22,13 -22,-13" fill="rgba(16, 185, 129, 0.25)" stroke="#10b981" strokeWidth="2.5" />
+                <text textAnchor="middle" dy="4" fill="#4ade80" fontSize="11" fontWeight="800">
+                  🚀 BOOST
+                </text>
+              </g>
+            ))}
+
+            {/* 7. Optional Shield Bouncer Moon */}
+            {shields.map((sh) => (
+              <g key={sh.id}>
+                <circle cx={sh.x} cy={sh.y} r={sh.shieldRadius} fill="rgba(56, 189, 248, 0.18)" stroke="#38bdf8" strokeWidth="2" strokeDasharray="5 3" />
+                <circle cx={sh.x} cy={sh.y} r={sh.radius} fill="#64748b" stroke="#ffffff" strokeWidth="2" />
+                <text x={sh.x} y={sh.y + sh.shieldRadius + 14} textAnchor="middle" fill="#38bdf8" fontSize="10" fontWeight="700">
+                  🛡️ Shield Deflector
+                </text>
+              </g>
+            ))}
+
+            {/* 8. Optional Hostile Enemy Spaceship */}
+            {enemyShip && (
+              <g transform={`translate(${enemyShip.x}, ${enemyShip.y})`}>
+                {enemyShip.status === 'active' ? (
+                  <>
+                    <circle r={enemyShip.radius + 8} fill="none" stroke="#ef4444" strokeWidth="2" strokeDasharray="4 4">
+                      <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="5s" repeatCount="indefinite" />
+                    </circle>
+                    <circle r={enemyShip.radius} fill="rgba(239, 68, 68, 0.35)" stroke="#ef4444" strokeWidth="2.5" />
+                    <text textAnchor="middle" dy="5" fontSize="15">
+                      👾
+                    </text>
+                    <text y={enemyShip.radius + 16} textAnchor="middle" fill="#ef4444" fontSize="10" fontWeight="700">
+                      Enemy Interceptor
+                    </text>
+                  </>
+                ) : (
+                  <>
+                    <circle r={enemyShip.radius} fill="rgba(100, 116, 139, 0.4)" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="3 3" />
+                    <text textAnchor="middle" dy="5" fontSize="14" opacity="0.5">
+                      💥
+                    </text>
+                    <text y={enemyShip.radius + 14} textAnchor="middle" fill="#94a3b8" fontSize="9" fontWeight="700">
+                      Disabled
+                    </text>
+                  </>
+                )}
+              </g>
+            )}
+
+            {/* Enemy Active Flying Projectile */}
+            {enemyTrail.length > 1 && (
+              <polyline
+                points={enemyTrail.map((p) => `${p.x},${p.y}`).join(' ')}
+                fill="none"
+                stroke="#ef4444"
+                strokeWidth="3.5"
+                strokeDasharray="6 3"
+                strokeLinecap="round"
+                opacity="0.95"
+              />
+            )}
+
+            {enemyProjectilePos && (
               <circle
-                cx={planet.x}
-                cy={planet.y}
-                r={planet.radius}
-                fill={planet.fill}
+                cx={enemyProjectilePos.x}
+                cy={enemyProjectilePos.y}
+                r="7"
+                fill="#fef2f2"
+                stroke="#ef4444"
+                strokeWidth="3"
                 filter="url(#planetGlow)"
               />
-              <circle
-                cx={planet.x - planet.radius * 0.3}
-                cy={planet.y - planet.radius * 0.3}
-                r={planet.radius * 0.4}
-                fill="rgba(255, 255, 255, 0.25)"
-              />
-              <text
-                x={planet.x}
-                y={planet.y + planet.radius + 16}
-                textAnchor="middle"
-                fill="rgba(241, 245, 249, 0.75)"
-                fontSize="11"
-                fontWeight="600"
-              >
-                M = {planet.mass}
-              </text>
-            </g>
-          ))}
+            )}
 
-          {/* 2. Optional Black Holes */}
-          {blackHoles.map((bh) => (
-            <g key={bh.id} transform={`translate(${bh.x}, ${bh.y})`}>
+            {/* Target Station / Portal */}
+            <g transform={`translate(${target.x}, ${target.y})`}>
               <circle
-                r={bh.eventRadius}
-                fill="rgba(249, 115, 22, 0.15)"
-                stroke="#f97316"
+                r={target.radius + 10}
+                fill="none"
+                stroke="#38bdf8"
                 strokeWidth="2"
-                strokeDasharray="6 4"
+                strokeDasharray="6 6"
+                opacity="0.7"
               >
                 <animateTransform
                   attributeName="transform"
                   type="rotate"
                   from="0"
                   to="360"
-                  dur="4s"
+                  dur="10s"
                   repeatCount="indefinite"
                 />
               </circle>
-              <circle r={bh.radius} fill="#000000" stroke="#f97316" strokeWidth="2.5" />
-              <text y={bh.eventRadius + 15} textAnchor="middle" fill="#f97316" fontSize="10" fontWeight="700">
-                🕳️ Event Horizon
-              </text>
-            </g>
-          ))}
-
-          {/* 3. Optional Asteroid Clouds */}
-          {asteroids.map((ast) => (
-            <g key={ast.id}>
               <circle
-                cx={ast.x}
-                cy={ast.y}
-                r={ast.radius}
-                fill="rgba(245, 158, 11, 0.16)"
-                stroke="#f59e0b"
-                strokeWidth="1.5"
-                strokeDasharray="5 5"
+                r={target.radius}
+                fill="rgba(56, 189, 248, 0.35)"
+                stroke="#38bdf8"
+                strokeWidth="3"
+                filter="url(#targetGlow)"
               />
-              <text x={ast.x} y={ast.y + 4} textAnchor="middle" fontSize="24" opacity="0.7">
-                🪨
-              </text>
-              <text x={ast.x} y={ast.y + ast.radius + 14} textAnchor="middle" fill="#f59e0b" fontSize="10" fontWeight="700">
-                Asteroid Drag Cloud
+              <text textAnchor="middle" dy="5" fontSize="16">
+                🎯
               </text>
             </g>
-          ))}
 
-          {/* 4. Optional Wormhole Portals */}
-          {wormholes.map((wh) => (
-            <g key={wh.id} transform={`translate(${wh.x}, ${wh.y})`}>
-              <circle r={wh.radius + 8} fill="none" stroke={wh.color} strokeWidth="2" strokeDasharray="4 4">
-                <animateTransform
-                  attributeName="transform"
-                  type="rotate"
-                  from="0"
-                  to="360"
-                  dur="3s"
-                  repeatCount="indefinite"
+            {/* Aiming Vector Line & Drag Handle */}
+            {!isSimulating && turnOwner === 'player' && !roundCompleted && (
+              <g>
+                <line
+                  x1={ship.x}
+                  y1={ship.y}
+                  x2={aimVectorEnd.x}
+                  y2={aimVectorEnd.y}
+                  stroke="#fbbf24"
+                  strokeWidth="3.5"
+                  strokeDasharray="6 4"
                 />
-              </circle>
-              <circle r={wh.radius} fill={`${wh.color}44`} stroke={wh.color} strokeWidth="3" />
-              <text textAnchor="middle" dy="4" fontSize="14">
-                🌀
-              </text>
-            </g>
-          ))}
 
-          {/* 5. Optional Repulsive Pulsar */}
-          {pulsars.map((pul) => (
-            <g key={pul.id} transform={`translate(${pul.x}, ${pul.y})`}>
-              <circle r={pul.radius + 12} fill="none" stroke="#38bdf8" strokeWidth="1.5" strokeDasharray="3 3">
-                <animateTransform
-                  attributeName="transform"
-                  type="rotate"
-                  from="360"
-                  to="0"
-                  dur="2s"
-                  repeatCount="indefinite"
-                />
-              </circle>
-              <circle r={pul.radius} fill="#0284c7" stroke="#ffffff" strokeWidth="2.5" />
-              <text textAnchor="middle" dy="4" fontSize="14">
-                ⚡
-              </text>
-              <text y={pul.radius + 16} textAnchor="middle" fill="#38bdf8" fontSize="10" fontWeight="700">
-                Pulsar (Anti-Gravity)
-              </text>
-            </g>
-          ))}
-
-          {/* 6. Optional Speed Booster Gate */}
-          {boosters.map((b) => (
-            <g key={b.id} transform={`translate(${b.x}, ${b.y})`}>
-              <polygon points="0,-26 22,-13 22,13 0,26 -22,13 -22,-13" fill="rgba(16, 185, 129, 0.25)" stroke="#10b981" strokeWidth="2.5" />
-              <text textAnchor="middle" dy="4" fill="#4ade80" fontSize="11" fontWeight="800">
-                🚀 BOOST
-              </text>
-            </g>
-          ))}
-
-          {/* 7. Optional Shield Bouncer Moon */}
-          {shields.map((sh) => (
-            <g key={sh.id}>
-              <circle cx={sh.x} cy={sh.y} r={sh.shieldRadius} fill="rgba(56, 189, 248, 0.18)" stroke="#38bdf8" strokeWidth="2" strokeDasharray="5 3" />
-              <circle cx={sh.x} cy={sh.y} r={sh.radius} fill="#64748b" stroke="#ffffff" strokeWidth="2" />
-              <text x={sh.x} y={sh.y + sh.shieldRadius + 14} textAnchor="middle" fill="#38bdf8" fontSize="10" fontWeight="700">
-                🛡️ Shield Deflector
-              </text>
-            </g>
-          ))}
-
-          {/* 8. Optional Hostile Enemy Spaceship */}
-          {enemyShip && (
-            <g transform={`translate(${enemyShip.x}, ${enemyShip.y})`}>
-              {enemyShip.status === 'active' ? (
-                <>
-                  <circle r={enemyShip.radius + 8} fill="none" stroke="#ef4444" strokeWidth="2" strokeDasharray="4 4">
-                    <animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="5s" repeatCount="indefinite" />
-                  </circle>
-                  <circle r={enemyShip.radius} fill="rgba(239, 68, 68, 0.35)" stroke="#ef4444" strokeWidth="2.5" />
-                  <text textAnchor="middle" dy="5" fontSize="15">
-                    👾
-                  </text>
-                  <text y={enemyShip.radius + 16} textAnchor="middle" fill="#ef4444" fontSize="10" fontWeight="700">
-                    Enemy Interceptor
-                  </text>
-                </>
-              ) : (
-                <>
-                  <circle r={enemyShip.radius} fill="rgba(100, 116, 139, 0.4)" stroke="#94a3b8" strokeWidth="1.5" strokeDasharray="3 3" />
-                  <text textAnchor="middle" dy="5" fontSize="14" opacity="0.5">
-                    💥
-                  </text>
-                  <text y={enemyShip.radius + 14} textAnchor="middle" fill="#94a3b8" fontSize="9" fontWeight="700">
-                    Disabled
-                  </text>
-                </>
-              )}
-            </g>
-          )}
-
-          {/* Enemy Active Flying Projectile */}
-          {enemyTrail.length > 1 && (
-            <polyline
-              points={enemyTrail.map((p) => `${p.x},${p.y}`).join(' ')}
-              fill="none"
-              stroke="#ef4444"
-              strokeWidth="3.5"
-              strokeDasharray="6 3"
-              strokeLinecap="round"
-              opacity="0.95"
-            />
-          )}
-
-          {enemyProjectilePos && (
-            <circle
-              cx={enemyProjectilePos.x}
-              cy={enemyProjectilePos.y}
-              r="7"
-              fill="#fef2f2"
-              stroke="#ef4444"
-              strokeWidth="3"
-              filter="url(#planetGlow)"
-            />
-          )}
-
-          {/* Target Station / Portal */}
-          <g transform={`translate(${target.x}, ${target.y})`}>
-            <circle
-              r={target.radius + 10}
-              fill="none"
-              stroke="#38bdf8"
-              strokeWidth="2"
-              strokeDasharray="6 6"
-              opacity="0.7"
-            >
-              <animateTransform
-                attributeName="transform"
-                type="rotate"
-                from="0"
-                to="360"
-                dur="10s"
-                repeatCount="indefinite"
-              />
-            </circle>
-            <circle
-              r={target.radius}
-              fill="rgba(56, 189, 248, 0.35)"
-              stroke="#38bdf8"
-              strokeWidth="3"
-              filter="url(#targetGlow)"
-            />
-            <text textAnchor="middle" dy="5" fontSize="16">
-              🎯
-            </text>
-          </g>
-
-          {/* Aiming Vector Line & Drag Handle */}
-          {!isSimulating && turnOwner === 'player' && (
-            <g>
-              <line
-                x1={ship.x}
-                y1={ship.y}
-                x2={aimVectorEnd.x}
-                y2={aimVectorEnd.y}
-                stroke="#fbbf24"
-                strokeWidth="3.5"
-                strokeDasharray="6 4"
-              />
-
-              <g
-                onPointerDown={handlePointerDown}
-                style={{ cursor: isDraggingAim ? 'grabbing' : 'grab' }}
-              >
-                <circle
-                  cx={aimVectorEnd.x}
-                  cy={aimVectorEnd.y}
-                  r="20"
-                  fill="rgba(251, 191, 36, 0.25)"
-                  className="handle-pulse"
-                />
-                <circle
-                  cx={aimVectorEnd.x}
-                  cy={aimVectorEnd.y}
-                  r="10"
-                  fill="#fbbf24"
-                  stroke="#ffffff"
-                  strokeWidth="3"
-                />
-              </g>
-            </g>
-          )}
-
-          {/* INDIVIDUAL PLANET GRAVITY PULL VECTORS */}
-          {showGravityVectors &&
-            individualVectors.map((vec) => {
-              const vecLen = Math.max(26, Math.min(130, vec.accelMag * 85));
-              const vecEnd = {
-                x: currentPos.x + vecLen * Math.cos(vec.angle),
-                y: currentPos.y + vecLen * Math.sin(vec.angle),
-              };
-
-              const hAngle1 = vec.angle + Math.PI - 0.4;
-              const hAngle2 = vec.angle + Math.PI + 0.4;
-              const hp1 = {
-                x: vecEnd.x + 9 * Math.cos(hAngle1),
-                y: vecEnd.y + 9 * Math.sin(hAngle1),
-              };
-              const hp2 = {
-                x: vecEnd.x + 9 * Math.cos(hAngle2),
-                y: vecEnd.y + 9 * Math.sin(hAngle2),
-              };
-
-              return (
-                <g key={`vec_${vec.planet.id}`} style={{ pointerEvents: 'none' }}>
-                  <line
-                    x1={currentPos.x}
-                    y1={currentPos.y}
-                    x2={vecEnd.x}
-                    y2={vecEnd.y}
-                    stroke={vec.planet.fill}
-                    strokeWidth="2.5"
-                    strokeDasharray="4 3"
-                    opacity="0.9"
+                <g
+                  onPointerDown={handlePointerDown}
+                  style={{ cursor: isDraggingAim ? 'grabbing' : 'grab' }}
+                >
+                  <circle
+                    cx={aimVectorEnd.x}
+                    cy={aimVectorEnd.y}
+                    r="20"
+                    fill="rgba(251, 191, 36, 0.25)"
+                    className="handle-pulse"
                   />
-                  <polygon
-                    points={`${vecEnd.x},${vecEnd.y} ${hp1.x},${hp1.y} ${hp2.x},${hp2.y}`}
-                    fill={vec.planet.fill}
-                    opacity="0.9"
+                  <circle
+                    cx={aimVectorEnd.x}
+                    cy={aimVectorEnd.y}
+                    r="10"
+                    fill="#fbbf24"
+                    stroke="#ffffff"
+                    strokeWidth="3"
                   />
-                  <rect
-                    x={vecEnd.x + 4}
-                    y={vecEnd.y - 10}
-                    width="48"
-                    height="18"
-                    rx="4"
-                    fill="rgba(15, 23, 42, 0.85)"
-                    stroke={vec.planet.fill}
-                    strokeWidth="1"
-                  />
-                  <text
-                    x={vecEnd.x + 28}
-                    y={vecEnd.y + 2}
-                    textAnchor="middle"
-                    fill={vec.planet.fill}
-                    fontSize="10"
-                    fontWeight="700"
-                    fontFamily="Outfit"
-                  >
-                    F{vec.planet.id}: {vec.accelMag.toFixed(1)}
-                  </text>
                 </g>
-              );
-            })}
+              </g>
+            )}
 
-          {/* COMBINED NET GRAVITY VECTOR */}
-          {showNetVector && netAccelMag > 0.05 && (
-            <g style={{ pointerEvents: 'none' }}>
-              <line
-                x1={currentPos.x}
-                y1={currentPos.y}
-                x2={netVectorEnd.x}
-                y2={netVectorEnd.y}
-                stroke="#ffffff"
+            {/* INDIVIDUAL PLANET GRAVITY PULL VECTORS */}
+            {showGravityVectors &&
+              individualVectors.map((vec) => {
+                const vecLen = Math.max(26, Math.min(130, vec.accelMag * 85));
+                const vecEnd = {
+                  x: currentPos.x + vecLen * Math.cos(vec.angle),
+                  y: currentPos.y + vecLen * Math.sin(vec.angle),
+                };
+
+                const hAngle1 = vec.angle + Math.PI - 0.4;
+                const hAngle2 = vec.angle + Math.PI + 0.4;
+                const hp1 = {
+                  x: vecEnd.x + 9 * Math.cos(hAngle1),
+                  y: vecEnd.y + 9 * Math.sin(hAngle1),
+                };
+                const hp2 = {
+                  x: vecEnd.x + 9 * Math.cos(hAngle2),
+                  y: vecEnd.y + 9 * Math.sin(hAngle2),
+                };
+
+                return (
+                  <g key={`vec_${vec.planet.id}`} style={{ pointerEvents: 'none' }}>
+                    <line
+                      x1={currentPos.x}
+                      y1={currentPos.y}
+                      x2={vecEnd.x}
+                      y2={vecEnd.y}
+                      stroke={vec.planet.fill}
+                      strokeWidth="2.5"
+                      strokeDasharray="4 3"
+                      opacity="0.9"
+                    />
+                    <polygon
+                      points={`${vecEnd.x},${vecEnd.y} ${hp1.x},${hp1.y} ${hp2.x},${hp2.y}`}
+                      fill={vec.planet.fill}
+                      opacity="0.9"
+                    />
+                    <rect
+                      x={vecEnd.x + 4}
+                      y={vecEnd.y - 10}
+                      width="48"
+                      height="18"
+                      rx="4"
+                      fill="rgba(15, 23, 42, 0.85)"
+                      stroke={vec.planet.fill}
+                      strokeWidth="1"
+                    />
+                    <text
+                      x={vecEnd.x + 28}
+                      y={vecEnd.y + 2}
+                      textAnchor="middle"
+                      fill={vec.planet.fill}
+                      fontSize="10"
+                      fontWeight="700"
+                      fontFamily="Outfit"
+                    >
+                      F{vec.planet.id}: {vec.accelMag.toFixed(1)}
+                    </text>
+                  </g>
+                );
+              })}
+
+            {/* COMBINED NET GRAVITY VECTOR */}
+            {showNetVector && netAccelMag > 0.05 && (
+              <g style={{ pointerEvents: 'none' }}>
+                <line
+                  x1={currentPos.x}
+                  y1={currentPos.y}
+                  x2={netVectorEnd.x}
+                  y2={netVectorEnd.y}
+                  stroke="#ffffff"
+                  strokeWidth="3.5"
+                  opacity="0.9"
+                />
+                <polygon
+                  points={`${netVectorEnd.x},${netVectorEnd.y} ${netP1.x},${netP1.y} ${netP2.x},${netP2.y}`}
+                  fill="#ffffff"
+                />
+                <rect
+                  x={netVectorEnd.x + 6}
+                  y={netVectorEnd.y - 12}
+                  width="68"
+                  height="20"
+                  rx="5"
+                  fill="rgba(15, 23, 42, 0.9)"
+                  stroke="#ffffff"
+                  strokeWidth="1.5"
+                />
+                <text
+                  x={netVectorEnd.x + 40}
+                  y={netVectorEnd.y + 2}
+                  textAnchor="middle"
+                  fill="#ffffff"
+                  fontSize="11"
+                  fontWeight="800"
+                  fontFamily="Outfit"
+                >
+                  F_net: {netAccelMag.toFixed(1)}
+                </text>
+              </g>
+            )}
+
+            {/* Spaceship Handle */}
+            <g
+              transform={`translate(${ship.x}, ${ship.y})`}
+              onPointerDown={handlePointerDown}
+              style={{ cursor: isDraggingAim ? 'grabbing' : 'grab' }}
+            >
+              <circle r="22" fill="rgba(99, 102, 241, 0.3)" />
+              <circle r="15" fill="#6366f1" stroke="#ffffff" strokeWidth="2.5" />
+              <text textAnchor="middle" dy="5" fontSize="14" style={{ pointerEvents: 'none' }}>
+                🚀
+              </text>
+            </g>
+
+            {/* Active Projectile Complete Trail Line */}
+            {trail.length > 1 && (
+              <polyline
+                points={trail.map((p) => `${p.x},${p.y}`).join(' ')}
+                fill="none"
+                stroke="#f43f5e"
                 strokeWidth="3.5"
-                opacity="0.9"
+                strokeLinecap="round"
+                opacity="0.95"
               />
-              <polygon
-                points={`${netVectorEnd.x},${netVectorEnd.y} ${netP1.x},${netP1.y} ${netP2.x},${netP2.y}`}
-                fill="#ffffff"
+            )}
+
+            {/* Flying Projectile Orb */}
+            {projectilePos && (
+              <circle
+                cx={projectilePos.x}
+                cy={projectilePos.y}
+                r="7"
+                fill="#ffe4e6"
+                stroke="#f43f5e"
+                strokeWidth="3"
+                filter="url(#planetGlow)"
               />
+            )}
+
+            {/* Top-Right HUD Badge: Target Distance AND Live Speed */}
+            <g transform="translate(640, 20)" style={{ pointerEvents: 'none' }}>
               <rect
-                x={netVectorEnd.x + 6}
-                y={netVectorEnd.y - 12}
-                width="68"
-                height="20"
-                rx="5"
-                fill="rgba(15, 23, 42, 0.9)"
-                stroke="#ffffff"
+                x="0"
+                y="0"
+                width="300"
+                height="36"
+                rx="10"
+                fill="rgba(15, 23, 42, 0.88)"
+                stroke="rgba(56, 189, 248, 0.4)"
                 strokeWidth="1.5"
               />
               <text
-                x={netVectorEnd.x + 40}
-                y={netVectorEnd.y + 2}
-                textAnchor="middle"
-                fill="#ffffff"
-                fontSize="11"
-                fontWeight="800"
+                x="14"
+                y="23"
+                fill="#38bdf8"
+                fontSize="12"
+                fontWeight="700"
                 fontFamily="Outfit"
               >
-                F_net: {netAccelMag.toFixed(1)}
+                🎯 Target: {targetDist} px
+              </text>
+              <text
+                x="160"
+                y="23"
+                fill="#4ade80"
+                fontSize="12"
+                fontWeight="700"
+                fontFamily="Outfit"
+              >
+                ⚡ Speed: {currentSpeed} px/s
               </text>
             </g>
-          )}
+          </svg>
 
-          {/* Spaceship Handle */}
-          <g
-            transform={`translate(${ship.x}, ${ship.y})`}
-            onPointerDown={handlePointerDown}
-            style={{ cursor: isDraggingAim ? 'grabbing' : 'grab' }}
-          >
-            <circle r="22" fill="rgba(99, 102, 241, 0.3)" />
-            <circle r="15" fill="#6366f1" stroke="#ffffff" strokeWidth="2.5" />
-            <text textAnchor="middle" dy="5" fontSize="14" style={{ pointerEvents: 'none' }}>
-              🚀
-            </text>
-          </g>
-
-          {/* Active Projectile Complete Trail Line */}
-          {trail.length > 1 && (
-            <polyline
-              points={trail.map((p) => `${p.x},${p.y}`).join(' ')}
-              fill="none"
-              stroke="#f43f5e"
-              strokeWidth="3.5"
-              strokeLinecap="round"
-              opacity="0.95"
-            />
-          )}
-
-          {/* Flying Projectile Orb */}
-          {projectilePos && (
-            <circle
-              cx={projectilePos.x}
-              cy={projectilePos.y}
-              r="7"
-              fill="#ffe4e6"
-              stroke="#f43f5e"
-              strokeWidth="3"
-              filter="url(#planetGlow)"
-            />
-          )}
-
-          {/* Top-Right HUD Badge: Target Distance AND Live Speed */}
-          <g transform="translate(640, 20)" style={{ pointerEvents: 'none' }}>
-            <rect
-              x="0"
-              y="0"
-              width="300"
-              height="36"
-              rx="10"
-              fill="rgba(15, 23, 42, 0.88)"
-              stroke="rgba(56, 189, 248, 0.4)"
-              strokeWidth="1.5"
-            />
-            <text
-              x="14"
-              y="23"
-              fill="#38bdf8"
-              fontSize="12"
-              fontWeight="700"
-              fontFamily="Outfit"
+          {/* POST-MATCH END GAME SUMMARY MODAL OVERLAY */}
+          {showEndSummary && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                background: 'rgba(2, 6, 23, 0.78)',
+                backdropFilter: 'blur(8px)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 30,
+                borderRadius: 'var(--radius-md)',
+              }}
             >
-              🎯 Target: {targetDist} px
-            </text>
-            <text
-              x="160"
-              y="23"
-              fill="#4ade80"
-              fontSize="12"
-              fontWeight="700"
-              fontFamily="Outfit"
-            >
-              ⚡ Speed: {currentSpeed} px/s
-            </text>
-          </g>
-        </svg>
+              <div
+                style={{
+                  background: 'rgba(15, 23, 42, 0.94)',
+                  border: '2px solid rgba(56, 189, 248, 0.4)',
+                  borderRadius: '18px',
+                  padding: '28px 36px',
+                  maxWidth: '460px',
+                  width: '90%',
+                  textAlign: 'center',
+                  boxShadow: '0 20px 50px rgba(0, 0, 0, 0.8)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px',
+                }}
+              >
+                <div style={{ fontSize: '2.4rem' }}>
+                  {gameStatus === 'hit_target'
+                    ? '🎯'
+                    : gameStatus === 'hit_enemy'
+                    ? '💥'
+                    : gameStatus === 'hit_player'
+                    ? '💥'
+                    : '🌌'}
+                </div>
+
+                <div style={{ fontFamily: 'Fredoka', fontSize: '1.5rem', color: '#ffffff' }}>
+                  {gameStatus === 'hit_target'
+                    ? 'Target Station Destroyed!'
+                    : gameStatus === 'hit_enemy'
+                    ? 'Enemy Interceptor Obliterated!'
+                    : gameStatus === 'hit_player'
+                    ? 'Direct Hit! Enemy Destroyed Your Ship!'
+                    : gameStatus === 'black_hole'
+                    ? 'Swallowed by Black Hole!'
+                    : 'Orbit Ended'}
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '12px',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    padding: '14px',
+                    borderRadius: '12px',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Flight Trajectory</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: '700', color: '#38bdf8' }}>
+                      {trail.length * 4} px
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Total Shots Fired</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: '700', color: '#fbbf24' }}>
+                      {pastTrails.length} shots
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Max Flight Speed</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: '700', color: '#4ade80' }}>
+                      {currentSpeed} px/s
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Total Score</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: '700', color: '#ec4899' }}>
+                      {score} pts
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px', marginTop: '6px' }}>
+                  <button
+                    className="btn-primary"
+                    style={{ flex: 1, padding: '12px 18px', fontSize: '1rem' }}
+                    onClick={() => handleNewLevel()}
+                  >
+                    <span>Next Solar System [Space]</span>
+                    <ArrowRight size={18} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* FULLSCREEN FLOATING OVERLAY HUDS */}
         {isFullscreen && (
@@ -1171,9 +1294,6 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                     <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                       <input type="checkbox" checked={showGravityGradients} onChange={(e) => setShowGravityGradients(e.target.checked)} /> 🌈 Gravity Field Gradients
                     </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={autoNextOnTarget} onChange={(e) => setAutoNextOnTarget(e.target.checked)} /> 🎯 Auto-next on Target Hit
-                    </label>
                   </div>
 
                   {/* Planet Count */}
@@ -1238,7 +1358,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                   min="0"
                   max="360"
                   value={angle}
-                  disabled={isSimulating || turnOwner !== 'player'}
+                  disabled={isSimulating || turnOwner !== 'player' || roundCompleted}
                   onChange={(e) => setAngle(Number(e.target.value))}
                   style={{ width: '100%', accentColor: 'var(--color-corner-a)' }}
                 />
@@ -1263,7 +1383,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                   min="10"
                   max="100"
                   value={power}
-                  disabled={isSimulating || turnOwner !== 'player'}
+                  disabled={isSimulating || turnOwner !== 'player' || roundCompleted}
                   onChange={(e) => setPower(Number(e.target.value))}
                   style={{ width: '100%', accentColor: 'var(--color-corner-c)' }}
                 />
@@ -1277,7 +1397,7 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                   disabled={isSimulating || turnOwner !== 'player'}
                 >
                   <Play size={18} />
-                  <span>Launch! [Space]</span>
+                  <span>{roundCompleted ? 'Next Solar System [Space]' : 'Launch! [Space]'}</span>
                 </button>
 
                 <button
@@ -1454,16 +1574,6 @@ export default function SpaceGravityGame({ soundEnabled, isFullscreen }) {
                     style={{ width: '16px', height: '16px', accentColor: '#8b5cf6' }}
                   />
                   <span>Show Planet Gravity Field Gradients 🌈</span>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#e2e8f0', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={autoNextOnTarget}
-                    onChange={(e) => setAutoNextOnTarget(e.target.checked)}
-                    style={{ width: '16px', height: '16px', accentColor: '#10b981' }}
-                  />
-                  <span>Auto-generate new planets on Target Hit 🎯</span>
                 </label>
               </div>
 

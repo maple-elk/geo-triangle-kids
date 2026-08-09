@@ -256,7 +256,7 @@ export function generateRandomLevel(width = 960, height = 600, config = {}) {
   };
 }
 
-// AI Aiming Trajectory Predictor for Enemy Counter-Attack
+// AI Aiming Trajectory Predictor for Enemy Counter-Attack (with arcade imperfection scatter)
 export function calculateEnemyAim(enemyShip, playerShip, level, gravityG = DEFAULT_G) {
   if (!enemyShip || enemyShip.status !== 'active') return null;
 
@@ -268,10 +268,10 @@ export function calculateEnemyAim(enemyShip, playerShip, level, gravityG = DEFAU
   let bestPower = 55;
   let minClosestDist = Infinity;
 
-  // Test candidate angles around direct line
-  for (let dDeg = -40; dDeg <= 40; dDeg += 8) {
+  // Search candidate trajectory options around direct line
+  for (let dDeg = -30; dDeg <= 30; dDeg += 12) {
     const candidateAngle = directAngle + (dDeg * Math.PI) / 180;
-    for (let candidatePower = 35; candidatePower <= 75; candidatePower += 15) {
+    for (let candidatePower = 35; candidatePower <= 75; candidatePower += 20) {
       let simPos = { x: enemyShip.x, y: enemyShip.y };
       let simVel = {
         x: (candidatePower / 4.8) * Math.cos(candidateAngle),
@@ -279,7 +279,7 @@ export function calculateEnemyAim(enemyShip, playerShip, level, gravityG = DEFAU
       };
 
       let closest = Infinity;
-      for (let step = 0; step < 180; step++) {
+      for (let step = 0; step < 160; step++) {
         const physicsStep = updateProjectilePhysics(simPos, simVel, level, 0.016, gravityG, 1.0);
         simPos = physicsStep.pos;
         simVel = physicsStep.vel;
@@ -296,12 +296,19 @@ export function calculateEnemyAim(enemyShip, playerShip, level, gravityG = DEFAU
     }
   }
 
+  // Add humanized arcade error scatter (±14° angle scatter & ±12 power scatter)
+  const angleError = ((Math.random() * 28 - 14) * Math.PI) / 180;
+  const powerError = Math.random() * 24 - 12;
+
+  const finalAngle = bestAngle + angleError;
+  const finalPower = Math.max(25, Math.min(85, bestPower + powerError));
+
   return {
-    angleDeg: Math.round(((bestAngle * 180) / Math.PI + 360) % 360),
-    power: bestPower,
+    angleDeg: Math.round(((finalAngle * 180) / Math.PI + 360) % 360),
+    power: Math.round(finalPower),
     initialVel: {
-      x: (bestPower / 4.8) * Math.cos(bestAngle),
-      y: (bestPower / 4.8) * Math.sin(bestAngle),
+      x: (finalPower / 4.8) * Math.cos(finalAngle),
+      y: (finalPower / 4.8) * Math.sin(finalAngle),
     },
   };
 }
